@@ -47,7 +47,11 @@
 
       <h1>Check-in Ban Tổ Chức</h1>
       <div class="sub">Dành cho thành viên BTC nhận thẻ và số.</div>
-      <div class="pill">Đã tham gia: <span id="btcCount" data-btc-count>0</span> / 3</div>
+      <div class="muted">
+  Đã tham gia BTC:
+  <span data-btc-count>0</span> / 3
+</div>
+
     </div>
 
     <div class="btc-card">
@@ -67,181 +71,203 @@
   </div>
 
 <script type="module">
+  // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  serverTimestamp,
-  onSnapshot          // <-- thêm dòng này
-} from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+  import {
+    getFirestore,
+    collection,
+    doc,
+    setDoc,
+    serverTimestamp,
+    onSnapshot
+  } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-const attendeesCol = collection(db, 'attendees');
-const BTC_LIMIT = 3;
-// ====================== REALTIME COUNTER BTC ======================
-function listenBTCCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    const docs = snap.docs.map(d => d.data());
-
-    // Đếm chỉ những người có role = BTC
-    const btcCount = docs.filter(d =>
-      String(d.role || '').toUpperCase() === 'BTC'
-    ).length;
-
-    document.querySelectorAll('[data-btc-count]').forEach(el => {
-      el.textContent = btcCount;
-    });
-
-    // console.log('Realtime btcCount =', btcCount);
-  }, (err) => {
-    console.error('Lỗi onSnapshot BTC:', err);
-  });
-}
-
-listenBTCCount();
-// ====================== HẾT PHẦN REALTIME ======================
-
-
+  // ============= CẤU HÌNH FIREBASE (GIỐNG INDEX) =============
   const firebaseConfig = {
-  apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
-  authDomain: "it2025-c6ed8.firebaseapp.com",
-  projectId: "it2025-c6ed8",
-  storageBucket: "it2025-c6ed8.firebasestorage.app",
-  messagingSenderId: "784468579580",
-  appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
-  measurementId: "G-ERVN4JE01P"
-};
+    apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
+    authDomain: "it2025-c6ed8.firebaseapp.com",
+    projectId: "it2025-c6ed8",
+    storageBucket: "it2025-c6ed8.firebasestorage.app",
+    messagingSenderId: "784468579580",
+    appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
+    measurementId: "G-ERVN4JE01P"
+  };
 
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  const db  = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
-  
-// Lắng nghe realtime số BTC đã tham gia
-function listenBTCCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    const btcCount = snap.docs
-      .map(d => d.data())
-      .filter(d => String(d.role || '').toUpperCase() === 'BTC').length;
 
-    const btcSpan = document.getElementById('btcCount'); // span "Đã tham gia: x / 3"
-    if (btcSpan) btcSpan.textContent = btcCount;
-  });
-}
-
-listenBTCCount();
-
-
-// gọi ngay khi load trang
-listenJoinedCount();
-
-  const KEY='participants_v1', IDX='lastEntryIndex';
-  const BTC_LIMIT = 3, TOTAL = 47;
+  // ============= CẤU HÌNH GAME CỤC BỘ =============
+  const KEY       = 'participants_v1';
+  const IDX       = 'lastEntryIndex';
+  const TOTAL     = 47;
+  const BTC_LIMIT = 3;
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
+  // ============= HÀM LOCALSTORAGE =============
   function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
   function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
   function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
-  function loadBTC(){
-    return loadAll().filter(item =>
-      String(item.role||'').toUpperCase()==='BTC' ||
-      String(item.teamLabel||'').toUpperCase()==='BTC'
-    );
+  // ============= PHÂN TEAM + SỐ MAY MẮN =============
+  function countInTeam(arr, id){ return arr.filter(x=>x.team===id).length; }
+
+  function assignTeam(arr){
+    const left = {};
+    TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
+    const avail = Object.keys(left).filter(k=> left[k] > 0).map(Number);
+    if(!avail.length) return null;
+    const pool = [];
+    avail.forEach(k=> { for(let i=0;i<left[k];i++) pool.push(k); });
+    return pool[Math.floor(Math.random()*pool.length)];
   }
+
   function getRandomUnusedNumber(){
-    const arr=loadAll(); const used=new Set(arr.map(a=>Number(a.number))); const unused=[];
+    const arr = loadAll();
+    const used = new Set(arr.map(a=>Number(a.number)));
+    const unused = [];
     for(let i=1;i<=TOTAL;i++) if(!used.has(i)) unused.push(i);
     if(!unused.length) return null;
     return unused[Math.floor(Math.random()*unused.length)];
   }
-  function countInTeam(arr,id){ return arr.filter(x=>x.team===id).length; }
-  function assignTeam(arr){
-    const left={}; TEAMS.forEach(t=> left[t.id]= t.capacity - countInTeam(arr,t.id));
-    const avail=Object.keys(left).filter(k=>left[k]>0).map(Number);
-    if(!avail.length) return null;
-    const pool=[]; avail.forEach(k=>{ for(let i=0;i<left[k];i++) pool.push(k); });
-    return pool[Math.floor(Math.random()*pool.length)];
+
+  // ============= LẤY BTC TRONG LOCAL (CHO GIỚI HẠN 3 NGƯỜI) =============
+  function loadBTC(){
+    const all = loadAll();
+    return all.filter(item =>
+      String(item.role || '').toUpperCase() === 'BTC' ||
+      String(item.teamLabel || '').toUpperCase() === 'BTC'
+    );
   }
-  function renderCount(){ document.getElementById('btcCount').textContent = loadBTC().length; }
-  renderCount();
-  window.addEventListener('storage', e=>{ if(e.key===KEY) renderCount(); });
 
-  const btn = document.getElementById('btcConfirm');
-  const nameInput = document.getElementById('btcName');
+  // ============= ID ĐẸP TRONG FIRESTORE =============
+  function makeDocIdFrom(rec) {
+    const cleanName = rec.name
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+      .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ chữ/số/_
+      .toLowerCase()
+      .slice(0, 20);
 
-  btn.addEventListener('click', async ()=>{
-    const nameRaw = nameInput.value || ''; const name = nameRaw.trim();
-    if(!name){ alert('Nhập tên thành viên BTC.'); return; }
-    if(loadAll().some(p=>normalizeName(p.name)===normalizeName(name))){ alert('Tên này đã tồn tại.'); return; }
+    return `btc_${cleanName}_no${rec.number}`;
+  }
 
-    const btcArr = loadBTC();
-    if(btcArr.length >= BTC_LIMIT){ alert('Số lượng BTC đã đủ (3 người).'); return; }
+  // ============= REALTIME ĐẾM BTC TỪ FIRESTORE =============
+  function listenBTCCount() {
+    onSnapshot(attendeesCol, (snap) => {
+      const docs = snap.docs.map(d => d.data());
+      const btcCount = docs.filter(d =>
+        String(d.role || '').toUpperCase() === 'BTC' ||
+        String(d.teamLabel || '').toUpperCase() === 'BTC'
+      ).length;
+
+      // gán vào mọi phần tử có data-btc-count
+      document.querySelectorAll('[data-btc-count]').forEach(el => {
+        el.textContent = btcCount;
+      });
+
+      // console.log('Realtime btcCount =', btcCount);
+    }, (err) => {
+      console.error('Lỗi onSnapshot BTC:', err);
+    });
+  }
+
+  listenBTCCount();
+
+  // ============= XỬ LÝ NÚT CHECK-IN BTC =============
+  const btnBTC   = document.getElementById('btcConfirm');
+  const nameBTC  = document.getElementById('btcName');
+
+  if (!btnBTC || !nameBTC) {
+    console.warn('Không tìm thấy #btcConfirm hoặc #btcName trong HTML.');
+  } else {
+    btnBTC.addEventListener('click', onBTCSubmit);
+    nameBTC.addEventListener('keypress', e=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        onBTCSubmit();
+      }
+    });
+  }
+
+  async function onBTCSubmit(){
+    const raw = nameBTC.value || '';
+    const name = raw.trim();
+    if(!name){
+      alert('Nhập tên thành viên BTC.');
+      return;
+    }
 
     const all = loadAll();
+
+    // chống trùng tên với bất kỳ ai
+    if(all.some(p => normalizeName(p.name) === normalizeName(name))){
+      alert('Tên này đã tồn tại trong danh sách.');
+      return;
+    }
+
+    // giới hạn BTC theo local (3 người)
+    const btcArr = loadBTC();
+    if(btcArr.length >= BTC_LIMIT){
+      alert('Số lượng BTC đã đủ (3 người).');
+      return;
+    }
+
+    // phân team + số (BTC vẫn chiếm slot & số như khách)
     const team = assignTeam(all);
-    if(team === null){ alert('Tất cả team đều đầy.'); return; }
+    if(team === null){
+      alert('Tất cả team đều đầy.');
+      return;
+    }
 
     const num = getRandomUnusedNumber();
-    if(num === null){ alert('Không còn số trống.'); return; }
+    if(num === null){
+      alert('Không còn số trống.');
+      return;
+    }
 
     const rec = {
       name,
-      role:'BTC',
-      teamLabel:'BTC',
+      role: 'BTC',
+      teamLabel: 'BTC',
       team,
-      number:num,
-      time:Date.now()
+      number: num,
+      time: Date.now()
     };
 
-    // 1) lưu localStorage
+    // 1) Lưu localStorage (cho result/admin cũ dùng)
     all.push(rec);
     saveAll(all);
     setLastIndex(all.length - 1);
 
-    // 2) ghi Firestore
-    try{
-      // tạo ID dễ đọc từ tên + số
-function makeDocIdFrom(rec) {
-  const cleanName = rec.name
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
-    .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ giữ chữ & số & _
-    .toLowerCase()
-    .slice(0, 20);                                   // cắt bớt cho gọn
-  return `${cleanName}_team${rec.team}_no${rec.number}`;
-}
-
-// ...
-const docId = makeDocIdFrom(rec);
-const ref = doc(attendeesCol, docId);
-
-await setDoc(ref, {
-  name: rec.name,
-  team: rec.team,
-  teamLabel: rec.teamLabel,
-  number: rec.number,
-  role: rec.role,
-  createdAt: serverTimestamp()
-});
-
-    }catch(err){
+    // 2) Ghi Firestore
+    try {
+      const docId = makeDocIdFrom(rec);
+      const ref   = doc(attendeesCol, docId);
+      await setDoc(ref, {
+        name: rec.name,
+        role: rec.role,
+        team: rec.team,
+        teamLabel: rec.teamLabel,
+        number: rec.number,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
       console.error('Lỗi Firestore BTC:', err);
     }
 
+    // 3) Chuyển sang trang kết quả
     window.location.href = 'result.html';
-  });
-
-  nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter'){ e.preventDefault(); btn.click(); } });
+  }
 </script>
+
 
 <footer class="site-footer">
   © 2025 Eddy – Web Developer. 47 Slots System.
 </footer>
 </body>
 </html>
+
 
 
 
