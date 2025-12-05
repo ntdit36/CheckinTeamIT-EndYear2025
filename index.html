@@ -85,97 +85,50 @@
 
 
 <script type="module">
-  // --- Firebase setup ---
+  // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  serverTimestamp,
-  onSnapshot          // <-- thêm dòng này
-} from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+  import {
+    getFirestore,
+    collection,
+    doc,
+    setDoc,
+    serverTimestamp,
+    onSnapshot
+  } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-const attendeesCol = collection(db, 'attendees');
-const TOTAL = 47; // nếu bạn chưa khai báo TOTAL thì thêm dòng này
-// ====================== REALTIME COUNTER INDEX ======================
-function listenJoinedCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    // Lấy toàn bộ document trong attendees
-    const docs = snap.docs.map(d => d.data());
-
-    // Đếm khách (role != BTC)
-    const guestCount = docs.filter(d =>
-      String(d.role || '').toUpperCase() !== 'BTC'
-    ).length;
-
-    // Gán vào tất cả phần tử có data-joined / data-total
-    document.querySelectorAll('[data-joined]').forEach(el => {
-      el.textContent = guestCount;
-    });
-    document.querySelectorAll('[data-total]').forEach(el => {
-      el.textContent = TOTAL;
-    });
-
-    // Debug (nếu cần)
-    // console.log('Realtime guestCount =', guestCount);
-  }, (err) => {
-    console.error('Lỗi onSnapshot index:', err);
-  });
-}
-
-// gọi lắng nghe ngay khi load trang
-listenJoinedCount();
-// ====================== HẾT PHẦN REALTIME ==========================
-
+  // ============= CẤU HÌNH FIREBASE =============
   const firebaseConfig = {
-  apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
-  authDomain: "it2025-c6ed8.firebaseapp.com",
-  projectId: "it2025-c6ed8",
-  storageBucket: "it2025-c6ed8.firebasestorage.app",
-  messagingSenderId: "784468579580",
-  appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
-  measurementId: "G-ERVN4JE01P"
-};
+    apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
+    authDomain: "it2025-c6ed8.firebaseapp.com",
+    projectId: "it2025-c6ed8",
+    storageBucket: "it2025-c6ed8.firebasestorage.app",
+    messagingSenderId: "784468579580",
+    appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
+    measurementId: "G-ERVN4JE01P"
+  };
 
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  const db  = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
-// Lắng nghe realtime số người đã tham gia từ Firestore
-function listenJoinedCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    const docs = snap.docs.map(d => d.data());
-    // GUEST = mọi người KHÔNG phải BTC
-    const guestCount = docs.filter(d => String(d.role || '').toUpperCase() !== 'BTC').length;
 
-    const joinedSpan = document.getElementById('joined');
-    const totalSpan  = document.getElementById('total');
-
-    if (joinedSpan) joinedSpan.textContent = guestCount;
-    if (totalSpan)  totalSpan.textContent  = TOTAL;  // 47
-  });
-}
-
-// gọi ngay khi load trang
-listenJoinedCount();
-
-  // --- Phần logic cũ (localStorage + random team/number) giữ nguyên ---
-
-  const KEY = 'participants_v1';
-  const IDX = 'lastEntryIndex';
+  // ============= CẤU HÌNH GAME CỤC BỘ =============
+  const KEY   = 'participants_v1';
+  const IDX   = 'lastEntryIndex';
   const TOTAL = 47;
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
+  // ============= HÀM LOCALSTORAGE =============
   function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
   function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
   function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
+  // ============= PHÂN TEAM + SỐ MAY MẮN =============
   function countInTeam(arr, id){ return arr.filter(x=>x.team===id).length; }
+
   function assignTeam(arr){
-    const left = {}; TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
+    const left = {};
+    TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
     const avail = Object.keys(left).filter(k=> left[k] > 0).map(Number);
     if(!avail.length) return null;
     const pool = [];
@@ -192,27 +145,79 @@ listenJoinedCount();
     return unused[Math.floor(Math.random()*unused.length)];
   }
 
- 
+  // ============= ID DOCUMENT ĐỌC ĐƯỢC TRONG FIRESTORE =============
+  function makeDocIdFrom(rec) {
+    const cleanName = rec.name
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+      .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ chữ/số/_
+      .toLowerCase()
+      .slice(0, 20);                                   // cắt cho gọn
 
-  // --- Xử lý submit: lưu localStorage + GHI LÊN FIRESTORE ---
+    return `${cleanName}_team${rec.team}_no${rec.number}`;
+  }
+
+  // ============= REALTIME COUNTER TỪ FIRESTORE =============
+  function listenJoinedCount() {
+    onSnapshot(attendeesCol, (snap) => {
+      const docs = snap.docs.map(d => d.data());
+
+      // Đếm khách (role != BTC)
+      const guestCount = docs.filter(d =>
+        String(d.role || '').toUpperCase() !== 'BTC'
+      ).length;
+
+      // Gán vào tất cả phần tử có data-joined / data-total
+      document.querySelectorAll('[data-joined]').forEach(el => {
+        el.textContent = guestCount;
+      });
+      document.querySelectorAll('[data-total]').forEach(el => {
+        el.textContent = TOTAL;
+      });
+
+      // console.log('Realtime guestCount =', guestCount);
+    }, (err) => {
+      console.error('Lỗi onSnapshot index:', err);
+    });
+  }
+
+  // gọi ngay khi load
+  listenJoinedCount();
+
+  // ============= XỬ LÝ NÚT CHECK-IN =============
   const btn = document.getElementById('checkBtn');
   const nameInput = document.getElementById('nameInput');
 
   btn.addEventListener('click', async ()=>{
     const name = nameInput.value.trim();
-    if(!name){ alert('Vui lòng nhập tên.'); return; }
+    if(!name){
+      alert('Vui lòng nhập tên.');
+      return;
+    }
 
     const all = loadAll();
+
+    // không cho trùng tên
     if(all.some(p => normalizeName(p.name) === normalizeName(name))){
-      alert('Tên này đã tồn tại.'); return;
+      alert('Tên này đã tồn tại.');
+      return;
     }
-    if(all.length >= TOTAL){ alert('Đã đầy.'); return; }
+
+    if(all.length >= TOTAL){
+      alert('Đã đầy.');
+      return;
+    }
 
     const team = assignTeam(all);
-    if(team === null){ alert('Tất cả team đều đầy.'); return; }
+    if(team === null){
+      alert('Tất cả team đều đầy.');
+      return;
+    }
 
     const num = getRandomUnusedNumber();
-    if(num === null){ alert('Không còn số trống.'); return; }
+    if(num === null){
+      alert('Không còn số trống.');
+      return;
+    }
 
     const rec = {
       name,
@@ -223,47 +228,35 @@ listenJoinedCount();
       role: 'GUEST'
     };
 
-    // 1) Lưu localStorage (để result/admin hiện tại vẫn chạy)
+    // 1) Lưu localStorage (cho result/admin dùng)
     all.push(rec);
     saveAll(all);
     setLastIndex(all.length - 1);
 
-    // 2) Ghi thêm lên Firestore
+    // 2) Ghi lên Firestore
     try {
-      // tạo ID dễ đọc từ tên + số
-function makeDocIdFrom(rec) {
-  const cleanName = rec.name
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
-    .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ giữ chữ & số & _
-    .toLowerCase()
-    .slice(0, 20);                                   // cắt bớt cho gọn
-  return `${cleanName}_team${rec.team}_no${rec.number}`;
-}
-
-// ...
-const docId = makeDocIdFrom(rec);
-const ref = doc(attendeesCol, docId);
-
-await setDoc(ref, {
-  name: rec.name,
-  team: rec.team,
-  teamLabel: rec.teamLabel,
-  number: rec.number,
-  role: rec.role,
-  createdAt: serverTimestamp()
-});
-
-      // không cần chờ xong mới redirect cũng được, nhưng an toàn thì chờ
+      const docId = makeDocIdFrom(rec);
+      const ref   = doc(attendeesCol, docId);
+      await setDoc(ref, {
+        name: rec.name,
+        team: rec.team,
+        teamLabel: rec.teamLabel,
+        number: rec.number,
+        role: rec.role,
+        createdAt: serverTimestamp()
+      });
     } catch (err) {
       console.error('Lỗi ghi Firestore:', err);
-      // vẫn cho redirect, vì localStorage đã có → event không bị kẹt
+      // vẫn cho đi tiếp vì localStorage đã có
     }
 
-    // Chuyển sang trang kết quả
+    // 3) Chuyển sang trang kết quả
     window.location.href = 'result.html';
   });
 
-  nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') btn.click(); });
+  nameInput.addEventListener('keypress', e=>{
+    if(e.key === 'Enter') btn.click();
+  });
 </script>
 
 <footer class="site-footer">
@@ -272,6 +265,7 @@ await setDoc(ref, {
 
 </body>
 </html>
+
 
 
 
