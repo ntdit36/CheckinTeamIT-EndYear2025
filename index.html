@@ -159,12 +159,7 @@ listenJoinedCount();
     return unused[Math.floor(Math.random()*unused.length)];
   }
 
-  function updateCounts(){
-    document.getElementById('joined').textContent = loadAll().length;
-    document.getElementById('total').textContent = TOTAL;
-  }
-  updateCounts();
-  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCounts(); });
+ 
 
   // --- Xử lý submit: lưu localStorage + GHI LÊN FIRESTORE ---
   const btn = document.getElementById('checkBtn');
@@ -244,4 +239,5 @@ await setDoc(ref, {
 
 </body>
 </html>
+
 
