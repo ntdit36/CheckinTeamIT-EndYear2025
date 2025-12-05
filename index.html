@@ -85,6 +85,54 @@
 
 
 <script type="module">
+  import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+
+// gọi khi trang load (sau khi init firebase)
+async function ensureCanCheckIn() {
+  const checked = localStorage.getItem('hasCheckedIn');
+  const myDocId = localStorage.getItem('myDocId');
+
+  if (checked !== '1') return true; // chưa check-in -> ok
+
+  if (!myDocId) {
+    // fallback: không có docId => remove flag để user có thể check lại
+    // hoặc bạn có thể giữ chặt và force liên hệ admin
+    localStorage.removeItem('hasCheckedIn');
+    return true;
+  }
+
+  try {
+    const ref = doc(db, 'attendees', myDocId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      // doc vẫn còn => KHÓA (đã check-in)
+      // bạn có thể redirect tới result hoặc show thông báo
+      window.location.href = 'result.html';
+      return false;
+    } else {
+      // doc đã bị admin xóa => cho phép check lại
+      localStorage.removeItem('hasCheckedIn');
+      localStorage.removeItem('myDocId');
+      return true;
+    }
+  } catch (err) {
+    console.error('Lỗi kiểm tra docId:', err);
+    // khi lỗi network: an toàn nhất là KHÔNG cho check-in (hoặc cho phép tuỳ bạn)
+    // ở đây ta sẽ tạm cho phép nếu offline:
+    return true;
+  }
+}
+
+// Ví dụ: gọi ở đầu script
+ensureCanCheckIn().then(ok => {
+  if (!ok) {
+    // đã redirect trong hàm; hoặc show message
+    console.log('Đang bị khóa do đã check-in.');
+  } else {
+    // tiếp tục load UI bình thường
+  }
+});
+
   // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
