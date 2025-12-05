@@ -68,13 +68,15 @@
 
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
-  import {
+import {
   getFirestore,
   collection,
   doc,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot          // <-- thêm dòng này
 } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+
 
 
   const firebaseConfig = {
@@ -90,6 +92,23 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
+v// Lắng nghe realtime số người đã tham gia từ Firestore
+function listenJoinedCount() {
+  onSnapshot(attendeesCol, (snap) => {
+    const docs = snap.docs.map(d => d.data());
+    // GUEST = mọi người KHÔNG phải BTC
+    const guestCount = docs.filter(d => String(d.role || '').toUpperCase() !== 'BTC').length;
+
+    const joinedSpan = document.getElementById('joined');
+    const totalSpan  = document.getElementById('total');
+
+    if (joinedSpan) joinedSpan.textContent = guestCount;
+    if (totalSpan)  totalSpan.textContent  = TOTAL;  // 47
+  });
+}
+
+// gọi ngay khi load trang
+listenJoinedCount();
 
   const KEY='participants_v1', IDX='lastEntryIndex';
   const BTC_LIMIT = 3, TOTAL = 47;
@@ -196,3 +215,4 @@ await setDoc(ref, {
 </footer>
 </body>
 </html>
+
