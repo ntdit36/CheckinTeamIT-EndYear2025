@@ -114,7 +114,7 @@
   // ============= CẤU HÌNH GAME CỤC BỘ =============
   const KEY   = 'participants_v1';
   const IDX   = 'lastEntryIndex';
-  const TOTAL = 47;
+  
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
   // ============= HÀM LOCALSTORAGE =============
@@ -157,31 +157,28 @@
   }
 
   // ============= REALTIME COUNTER TỪ FIRESTORE =============
-  function listenJoinedCount() {
-    onSnapshot(attendeesCol, (snap) => {
-      const docs = snap.docs.map(d => d.data());
+  // TOTAL = tổng số slot (bao gồm BTC). Thay 47 bằng 15 nếu muốn giới hạn 15.
+const TOTAL = 47; 
 
-      // Đếm khách (role != BTC)
-      const guestCount = docs.filter(d =>
-        String(d.role || '').toUpperCase() !== 'BTC'
-      ).length;
+function listenJoinedCount() {
+  onSnapshot(attendeesCol, (snap) => {
+    // Tổng số người hiện có (bao gồm BTC)
+    const totalCount = snap.size; // hoặc snap.docs.length
 
-      // Gán vào tất cả phần tử có data-joined / data-total
-      document.querySelectorAll('[data-joined]').forEach(el => {
-        el.textContent = guestCount;
-      });
-      document.querySelectorAll('[data-total]').forEach(el => {
-        el.textContent = TOTAL;
-      });
+    // Hiển thị vào các span data-joined / data-total
+    document.querySelectorAll('[data-joined]').forEach(el => el.textContent = totalCount);
+    document.querySelectorAll('[data-total]').forEach(el => el.textContent = TOTAL);
 
-      // console.log('Realtime guestCount =', guestCount);
-    }, (err) => {
-      console.error('Lỗi onSnapshot index:', err);
-    });
-  }
+    // Nếu muốn highlight khi đầy:
+    if(totalCount >= TOTAL){
+      document.querySelectorAll('[data-joined]').forEach(el => el.style.color = '#f97316'); // ví dụ đổi màu
+    }
+  }, (err) => {
+    console.error('Lỗi onSnapshot index:', err);
+  });
+}
+listenJoinedCount();
 
-  // Gọi realtime listener khi load trang
-  listenJoinedCount();
 
   // ============= XỬ LÝ NÚT CHECK-IN =============
   const btn = document.getElementById('checkBtn');
@@ -267,7 +264,6 @@
 
 </body>
 </html>
-
 
 
 

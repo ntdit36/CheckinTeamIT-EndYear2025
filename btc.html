@@ -101,7 +101,7 @@
   const KEY       = 'participants_v1';
   const IDX       = 'lastEntryIndex';
   const TOTAL     = 47;
-  const BTC_LIMIT = 3;
+  
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
   // ============= HÀM LOCALSTORAGE =============
@@ -153,26 +153,23 @@
   }
 
   // ============= REALTIME ĐẾM BTC TỪ FIRESTORE =============
-  function listenBTCCount() {
-    onSnapshot(attendeesCol, (snap) => {
-      const docs = snap.docs.map(d => d.data());
-      const btcCount = docs.filter(d =>
-        String(d.role || '').toUpperCase() === 'BTC' ||
-        String(d.teamLabel || '').toUpperCase() === 'BTC'
-      ).length;
+  const BTC_LIMIT = 3; // giới hạn BTC
 
-      // gán vào mọi phần tử có data-btc-count
-      document.querySelectorAll('[data-btc-count]').forEach(el => {
-        el.textContent = btcCount;
-      });
+function listenBTCCount() {
+  onSnapshot(attendeesCol, (snap) => {
+    const docs = snap.docs.map(d => d.data());
+    const btcCount = docs.filter(d => String(d.role||'').toUpperCase() === 'BTC' || String(d.teamLabel||'').toUpperCase() === 'BTC').length;
 
-      // console.log('Realtime btcCount =', btcCount);
-    }, (err) => {
-      console.error('Lỗi onSnapshot BTC:', err);
-    });
-  }
+    document.querySelectorAll('[data-btc-count]').forEach(el => el.textContent = btcCount);
 
-  listenBTCCount();
+    // Nếu bạn muốn BTC page cũng hiển thị tổng (bao gồm BTC), có thể update [data-joined] giống index:
+    document.querySelectorAll('[data-joined]').forEach(el => el.textContent = snap.size);
+  }, (err) => {
+    console.error('Lỗi onSnapshot BTC:', err);
+  });
+}
+listenBTCCount();
+
 
   // ============= XỬ LÝ NÚT CHECK-IN BTC =============
   const btnBTC   = document.getElementById('btcConfirm');
@@ -267,7 +264,6 @@
 </footer>
 </body>
 </html>
-
 
 
 
