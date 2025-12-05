@@ -92,20 +92,21 @@ import {
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
-v// Lắng nghe realtime số người đã tham gia từ Firestore
-function listenJoinedCount() {
+  
+// Lắng nghe realtime số BTC đã tham gia
+function listenBTCCount() {
   onSnapshot(attendeesCol, (snap) => {
-    const docs = snap.docs.map(d => d.data());
-    // GUEST = mọi người KHÔNG phải BTC
-    const guestCount = docs.filter(d => String(d.role || '').toUpperCase() !== 'BTC').length;
+    const btcCount = snap.docs
+      .map(d => d.data())
+      .filter(d => String(d.role || '').toUpperCase() === 'BTC').length;
 
-    const joinedSpan = document.getElementById('joined');
-    const totalSpan  = document.getElementById('total');
-
-    if (joinedSpan) joinedSpan.textContent = guestCount;
-    if (totalSpan)  totalSpan.textContent  = TOTAL;  // 47
+    const btcSpan = document.getElementById('btcCount'); // span "Đã tham gia: x / 3"
+    if (btcSpan) btcSpan.textContent = btcCount;
   });
 }
+
+listenBTCCount();
+
 
 // gọi ngay khi load trang
 listenJoinedCount();
@@ -215,4 +216,5 @@ await setDoc(ref, {
 </footer>
 </body>
 </html>
+
 
