@@ -6,6 +6,7 @@
   <title>Check-in — Public</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap" rel="stylesheet">
+  
   <style>
     :root{
       --bg:#111827;
@@ -86,6 +87,8 @@
 
 <script type="module">
   
+import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+
   // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
@@ -232,29 +235,43 @@ listenJoinedCount();
     setLastIndex(all.length - 1);
 
     // 2) Ghi lên Firestore
-    try {
-      const docId = makeDocIdFrom(rec);
-      const ref   = doc(attendeesCol, docId);
-      await setDoc(ref, {
-        name: rec.name,
-        team: rec.team,
-        teamLabel: rec.teamLabel,
-        number: rec.number,
-        role: rec.role,
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.error('Lỗi ghi Firestore:', err);
-      // vẫn cho đi tiếp vì localStorage đã có
-    }
+    // --- Cách 1: check tổng hiện tại trước khi ghi ---
+try {
+  // Lấy tổng hiện tại (bao gồm BTC)
+  const snapAll = await getDocs(attendeesCol);
+  const currentTotal = snapAll.size;
 
-    // 3) Chuyển sang trang kết quả
-    window.location.href = 'result.html';
+  if (currentTotal >= TOTAL) {
+    alert(`Đã đủ ${TOTAL} người tham gia. Không thể đăng ký thêm.`);
+    return; // dừng, không lưu
+  }
+
+  // nếu chưa đầy: lưu local + ghi lên Firestore
+  all.push(rec);
+  saveAll(all);
+  setLastIndex(all.length - 1);
+
+  const docId = makeDocIdFrom(rec);
+  const ref = doc(attendeesCol, docId);
+  await setDoc(ref, {
+    name: rec.name,
+    team: rec.team,
+    teamLabel: rec.teamLabel,
+    number: rec.number,
+    role: rec.role,
+    createdAt: serverTimestamp()
   });
 
-  nameInput.addEventListener('keypress', e=>{
-    if(e.key === 'Enter') btn.click();
-  });
+  // lưu thông tin khóa trên client
+  localStorage.setItem('hasCheckedIn', '1');
+  localStorage.setItem('myDocId', docId);
+
+  window.location.href = 'result.html';
+} catch (err) {
+  console.error('Lỗi khi ghi Firestore (Cách1):', err);
+  alert('Có lỗi khi xử lý. Vui lòng thử lại.');
+}
+
 </script>
 
 
