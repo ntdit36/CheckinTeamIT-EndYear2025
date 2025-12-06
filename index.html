@@ -31,23 +31,21 @@
     .gear-btn{position:fixed; right:18px; top:18px; z-index:999; width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.04); cursor:pointer; box-shadow: 0 6px 18px rgba(2,6,23,0.5);}
     @media (max-width:520px){ .wrap{padding:20px} h1{font-size:26px} .it-icon{width:56px;height:56px} }
     .site-footer {
-  position: fixed;         /* luôn dính cuối màn hình */
-  left: 0;
-  right: 0;
-  bottom: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: #64748b;          /* tương đương text-slate-600 */
-  padding: 16px 0;         /* tương đương p-4 */
-  pointer-events: none;    /* để không che nút bấm phía trên */
-}
-
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+      padding: 16px 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
-    
 
-  <a class="gear-btn" href="admin.html" title="Xem trang Admin" onclick="requireAdmin(event)">
+  <a class="gear-btn" href="admin.html" title="Xem trang Admin" onclick="return requireAdmin(event)">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cfe0ff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 0 1 6.57 2.1l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09c0 .6.39 1.16 1 1.51h.55a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 0 1 20.94 6.6l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .6.39 1.16 1 1.51H21a2 2 0 0 1 0 4h-.09c-.6 0-1.16.39-1.51 1z"/></svg>
   </a>
 
@@ -62,16 +60,16 @@
           <rect x="7" y="17.4" width="10" height="1.2" rx="0.6" fill="#cfe0ff" opacity="0.06"/>
         </svg>
       </div>
-      <h1>CHECK-IN IT TEAM</h1>
+      <h1>CHECK-IN THAM GIA TEAM</h1>
     </div>
 
-    <div class="muted">Nhập tên để tìm team và số may mắn. <br> <span class="small-pill">Đã tham gia: <span id="joined">0</span>/ <span id="total">44</span></span></div>
+    <div class="muted">Nhập tên để nhận số thứ tự và team ngẫu nhiên. <br> <span class="small-pill">Đã tham gia: <span id="joined">0</span>/ <span id="total">44</span></span></div>
 
     <div style="height:10px"></div>
 
     <div class="mb-3">
       <label class="label-upper">Tên thành viên</label>
-      <input id="nameInput" class="form-control input-lg" placeholder="Ví dụ: Eddy "/>
+      <input id="nameInput" class="form-control input-lg" placeholder="Ví dụ: Nguyễn Văn A"/>
     </div>
 
     <div class="d-grid mb-2">
@@ -83,9 +81,8 @@
     </div>
   </div>
 
-
 <script type="module">
-  // --- Firebase setup ---
+  // FIREBASE + LOGIC (index.html) - đã chỉnh cho guest-total riêng vs btc
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
     getFirestore,
@@ -114,89 +111,29 @@
   const attendeesCol = collection(db, 'attendees');
   const attendeesQuery = query(attendeesCol, orderBy('createdAt', 'asc'));
 
-  // --- Local constants & helpers (giữ gần giống cũ) ---
+  // --- Config: phân biệt guest vs btc ---
+  const GUEST_TOTAL = 44;      // public nhìn thấy 44 khách
+  const BTC_CAPACITY = 3;      // slot BTC
+  const TOTAL = GUEST_TOTAL + BTC_CAPACITY; // 47 tổng slot
+
+  // local keys
   const KEY = 'participants_v1';
   const IDX = 'lastEntryIndex';
-  const TOTAL = 47;
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
+  // UI refs
+  const joinedEl = document.getElementById('joined');
+  const totalEl = document.getElementById('total');
+  const btn = document.getElementById('checkBtn');
+  const nameInput = document.getElementById('nameInput');
+
+  // util
   function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
   function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
   function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
-  // --- UI refs ---
-  const joinedEl = document.getElementById('joined');
-  const totalEl = document.getElementById('total');
-  const btn = document.getElementById('checkBtn');
-  const nameInput = document.getElementById('nameInput');
-  const btcLink = document.getElementById('btcLink');
-
-  // update UI counts from localStorage (fallback)
-  function updateCountsFromLocal() {
-    joinedEl.textContent = loadAll().length;
-    totalEl.textContent = TOTAL;
-  }
-  updateCountsFromLocal();
-  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCountsFromLocal(); });
-
-  // --- Realtime listener để cập nhật "Đã tham gia" trên page này ngay khi Firestore thay đổi ---
-  // Cập nhật both UI và localStorage trên máy này để giữ backward compatibility với các page dùng localStorage.
-  onSnapshot(attendeesQuery, (snap) => {
-    try {
-      const remote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // cập nhật số đã tham gia hiển thị
-      joinedEl.textContent = remote.length;
-      totalEl.textContent = TOTAL;
-      // sync localStorage (ghi những trường cần thiết)
-      const dump = remote.map(p => ({
-        name: p.name || '',
-        number: p.number || null,
-        role: p.role || '',
-        team: p.team || null,
-        teamLabel: p.teamLabel || '',
-        slogan: p.slogan || '',
-        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
-      }));
-      try { localStorage.setItem(KEY, JSON.stringify(dump)); localStorage.setItem(IDX, String(Math.max(0, dump.length - 1))); } catch(e){ /* ignore */ }
-      // nếu đầy thì disable button
-      btn.disabled = (remote.length >= TOTAL);
-    } catch (err) {
-      console.warn('Error processing realtime snapshot:', err);
-    }
-  }, (err) => {
-    console.error('Realtime listener error:', err);
-    // fallback: UI vẫn dùng localStorage
-  });
-
-  // --- Server-aware helpers ---
-  // build available numbers and team capacities based on a given list (from server)
-  function computeAvailable(serverList){
-    const usedNumbers = new Set(serverList.map(s => Number(s.number)).filter(n => !isNaN(n)));
-    const availNumbers = [];
-    for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
-
-    const teamLeft = {};
-    TEAMS.forEach(t => {
-      const used = serverList.filter(p => Number(p.team) === t.id).length;
-      teamLeft[t.id] = Math.max(0, t.capacity - used);
-    });
-
-    return { availNumbers, teamLeft };
-  }
-
-  // pick a team randomly weighted by remaining slots (server-aware)
-  function pickTeam(teamLeft){
-    const pool = [];
-    Object.keys(teamLeft).forEach(k => {
-      const left = teamLeft[k];
-      for(let i=0;i<left;i++) pool.push(Number(k));
-    });
-    if(pool.length === 0) return null;
-    return pool[Math.floor(Math.random()*pool.length)];
-  }
-
-  // make doc id deterministic-ish from name+team+no, fallback add random suffix
+  // make docId safe
   function makeDocIdFrom(rec){
     const cleanName = rec.name
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -206,12 +143,72 @@
     return `${cleanName}_team${rec.team}_no${rec.number}`;
   }
 
-  // --- Submit handler: dùng dữ liệu từ server trước khi quyết định team/number ---
+  // update counts from localStorage (guests only)
+  function updateCountsFromLocal() {
+    const all = loadAll() || [];
+    const guestCount = all.filter(p => {
+      const r = String(p.role || 'GUEST').toUpperCase();
+      return r !== 'BTC';
+    }).length;
+    joinedEl.textContent = guestCount;
+    totalEl.textContent = GUEST_TOTAL;
+  }
+  updateCountsFromLocal();
+  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCountsFromLocal(); });
+
+  // Realtime listener: sync UI + localStorage on this machine
+  onSnapshot(attendeesQuery, (snap) => {
+    const remote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // guest count for UI
+    const guestCount = remote.filter(p => String(p.role||'GUEST').toUpperCase() !== 'BTC').length;
+    joinedEl.textContent = guestCount;
+    totalEl.textContent = GUEST_TOTAL;
+    // sync localStorage with server state (fields only)
+    try {
+      const dump = remote.map(p => ({
+        name: p.name || '',
+        number: p.number || null,
+        role: p.role || '',
+        team: p.team || null,
+        teamLabel: p.teamLabel || '',
+        slogan: p.slogan || '',
+        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
+      }));
+      // if remote is empty but local has items, keep local (avoid overwriting by transient empty snapshot)
+      const local = loadAll();
+      if(!(remote.length === 0 && local.length > 0)){
+        localStorage.setItem(KEY, JSON.stringify(dump));
+        localStorage.setItem(IDX, String(Math.max(0, dump.length - 1)));
+      }
+      btn.disabled = (guestCount >= GUEST_TOTAL);
+    } catch (e) {
+      console.warn('Sync localStorage failed', e);
+    }
+  }, (err) => {
+    console.error('Realtime listener error:', err);
+  });
+
+  // helper compute available
+  function computeAvailableFromServer(serverDocs){
+    const usedNumbers = new Set(serverDocs.map(s => Number(s.number)).filter(n => !isNaN(n)));
+    const availNumbers = [];
+    for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
+
+    const teamLeft = {};
+    TEAMS.forEach(t => {
+      const usedByGuests = serverDocs.filter(p => (String(p.role||'').toUpperCase() !== 'BTC') && Number(p.team) === t.id).length;
+      teamLeft[t.id] = Math.max(0, t.capacity - usedByGuests);
+    });
+
+    return { availNumbers, teamLeft };
+  }
+
+  // submit handler
   btn.addEventListener('click', async ()=>{
     const name = nameInput.value.trim();
     if(!name){ alert('Vui lòng nhập tên.'); return; }
 
-    // 1) lấy snapshot hiện tại từ server (1 lần)
+    // take server snapshot once
     let serverDocs = [];
     try {
       const snap = await getDocs(attendeesQuery);
@@ -222,20 +219,24 @@
       return;
     }
 
-    // 2) check trùng tên trên server (tránh trùng giữa các máy)
+    // duplicate name?
     if(serverDocs.some(p => normalizeName(p.name) === normalizeName(name))){
       alert('Tên này đã tồn tại.'); return;
     }
-    if(serverDocs.length >= TOTAL){ alert('Đã đầy.'); return; }
 
-    // 3) compute available numbers & team slots based on server data
-    const { availNumbers, teamLeft } = computeAvailable(serverDocs);
+    // guest fullness check
+    const guestNow = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
+    if(guestNow >= GUEST_TOTAL){ alert('Đã đầy cho khách.'); return; }
+
+    const { availNumbers, teamLeft } = computeAvailableFromServer(serverDocs);
     if(availNumbers.length === 0){ alert('Không còn số trống.'); return; }
     const chosenNumber = availNumbers[Math.floor(Math.random()*availNumbers.length)];
-    const chosenTeam = pickTeam(teamLeft);
-    if(chosenTeam === null){ alert('Tất cả team đều đầy.'); return; }
 
-    // 4) build record
+    const pool = [];
+    Object.keys(teamLeft).forEach(k => { for(let i=0;i<teamLeft[k];i++) pool.push(Number(k)); });
+    if(pool.length === 0){ alert('Tất cả team đều đầy.'); return; }
+    const chosenTeam = pool[Math.floor(Math.random()*pool.length)];
+
     const rec = {
       name,
       team: chosenTeam,
@@ -245,23 +246,23 @@
       role: 'GUEST'
     };
 
-    // 5) update localStorage ngay (ngay lập tức phản hồi UX)
+    // save local for immediate UX
     try {
       const all = loadAll();
       all.push(rec);
       saveAll(all);
       setLastIndex(all.length - 1);
-    } catch(e){ console.warn('Không lưu localStorage:', e); }
+      updateCountsFromLocal(); // update same-tab UI immediately
+    } catch(e) { console.warn('Không lưu localStorage:', e); }
 
-    // 6) GHI LÊN FIRESTORE. Tạo doc id, nếu đã tồn tại (rất hiếm) thêm suffix random và thử lại
+    // write to firestore
     try {
       let docId = makeDocIdFrom(rec);
+      // try setDoc, if collision change id suffix
       let attempts = 0;
       while(attempts < 4){
-        const ref = doc(attendeesCol, docId);
         try {
-          // setDoc với overwrite — nhưng docId được thiết kế để hiếm trùng; nếu trùng thì thử lại với suffix
-          await setDoc(ref, {
+          await setDoc(doc(attendeesCol, docId), {
             name: rec.name,
             team: rec.team,
             teamLabel: rec.teamLabel,
@@ -269,26 +270,33 @@
             role: rec.role,
             createdAt: serverTimestamp()
           });
-          break; // thành công
-        } catch (err) {
-          // có thể thất bại nếu docId bị khoá hay permission; thay id và thử lại
-          console.warn('Lỗi setDoc, thử id khác:', err);
+          break;
+        } catch(err){
           attempts++;
           docId = `${docId}_${Math.random().toString(36).slice(2,8)}`;
         }
       }
     } catch (err) {
       console.error('Lỗi ghi Firestore:', err);
-      // mặc kệ: localStorage đã có bản ghi để UX, nhưng Firestore chưa có -> admin realtime không thấy
     }
 
-    // 7) chuyển sang trang result
     window.location.href = 'result.html';
   });
 
   nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') btn.click(); });
 
+  // simple admin require function to avoid missing onclick reference errors
+  function requireAdmin(e){
+    // allow direct navigation; if you want a prompt, uncomment below:
+    // e.preventDefault();
+    // const pw = prompt('Nhập mật khẩu Admin để vào trang quản lý:');
+    // if(pw === '2025') { sessionStorage.setItem('admin_auth','1'); window.location.href='admin.html'; } else { alert('Sai mật khẩu'); }
+    return true;
+  }
+  window.requireAdmin = requireAdmin;
+
 </script>
+
 <footer class="site-footer">
   © 2025 Eddy – Web Developer. 47 Slots System.
 </footer>

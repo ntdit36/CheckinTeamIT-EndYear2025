@@ -41,16 +41,16 @@
       .teams-row{justify-content:center}
     }
     .site-footer {
-  position: fixed;         /* luôn dính cuối màn hình */
-  left: 0;
-  right: 0;
-  bottom: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: #64748b;          /* tương đương text-slate-600 */
-  padding: 16px 0;         /* tương đương p-4 */
-  pointer-events: none;    /* để không che nút bấm phía trên */
-}
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+      padding: 16px 0;
+      pointer-events: none;
+    }
 
   </style>
 </head>
@@ -160,6 +160,9 @@
     collection,
     query,
     orderBy,
+    // realtime
+    onSnapshot,
+    // fallback / some helpers (kept)
     getDocs,
     doc,
     updateDoc,
@@ -167,15 +170,15 @@
     writeBatch
   } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
- const firebaseConfig = {
-  apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
-  authDomain: "it2025-c6ed8.firebaseapp.com",
-  projectId: "it2025-c6ed8",
-  storageBucket: "it2025-c6ed8.firebasestorage.app",
-  messagingSenderId: "784468579580",
-  appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
-  measurementId: "G-ERVN4JE01P"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
+    authDomain: "it2025-c6ed8.firebaseapp.com",
+    projectId: "it2025-c6ed8",
+    storageBucket: "it2025-c6ed8.firebasestorage.app",
+    messagingSenderId: "784468579580",
+    appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
+    measurementId: "G-ERVN4JE01P"
+  };
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
@@ -340,13 +343,41 @@
     tableBody.querySelectorAll('.btn-del').forEach(b => b.addEventListener('click', onDeleteClick));
   }
 
-  async function loadFromFirestore(){
-    const q = query(attendeesCol, orderBy('createdAt','asc'));
-    const snap = await getDocs(q);
+  // ---- Realtime load bằng onSnapshot (thay getDocs once) ----
+  const attendeesQuery = query(attendeesCol, orderBy('createdAt','asc'));
+  const unsubscribe = onSnapshot(attendeesQuery, (snap) => {
     participants = snap.docs.map(d => ({ id:d.id, ...d.data() }));
     renderTeams();
     renderTable();
-  }
+
+    // đồng bộ localStorage (trên máy admin này) — ghi những trường cần thiết
+    try {
+      const KEY = 'participants_v1';
+      const IDX = 'lastEntryIndex';
+      const dump = participants.map(p => ({
+        name: p.name || '',
+        number: p.number || null,
+        role: p.role || '',
+        team: p.team || null,
+        teamLabel: p.teamLabel || '',
+        slogan: p.slogan || '',
+        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
+      }));
+
+      // Nếu remote rỗng nhưng local đang có data thì giữ local (tránh overwrite tạm thời khi người submit đang chờ viết)
+      const localRaw = localStorage.getItem(KEY);
+      const localArr = localRaw ? JSON.parse(localRaw) : [];
+      if (!(dump.length === 0 && localArr.length > 0)) {
+        localStorage.setItem(KEY, JSON.stringify(dump));
+        localStorage.setItem(IDX, String(Math.max(0, dump.length - 1)));
+      }
+    } catch (err) {
+      console.warn('Không thể sync localStorage:', err);
+    }
+  }, (err) => {
+    console.error('Lỗi realtime Firestore:', err);
+    alert('Không tải được dữ liệu từ Firestore. Kiểm tra rule & mạng.');
+  });
 
   // ---- Edit / Delete ----
   function onEditClick(e){
@@ -392,7 +423,6 @@
     }
     if(teamVal.toUpperCase() === 'BTC'){
       newTeamLabel = 'BTC';
-      // team có thể vẫn giữ hoặc null, tuỳ bạn
     }
 
     const docRef = doc(db, 'attendees', rec.id);
@@ -405,67 +435,40 @@
       slogan: newSlogan || null
     });
 
-    // update local state
-    participants[editIndex] = {
-      ...rec,
-      name: newName,
-      role: newRole,
-      team: newTeam,
-      teamLabel: newTeamLabel,
-      number: newNumber,
-      slogan: newSlogan
-    };
-
+    // onSnapshot sẽ cập nhật local state & UI tự động
     editModal.hide();
-    renderTeams();
-    renderTable();
   });
 
   async function onDeleteClick(e){
-  const id = e.currentTarget.dataset.id;
-  const rec = participants.find(p => p.id === id);
-  if (!rec) return;
+    const id = e.currentTarget.dataset.id;
+    const rec = participants.find(p => p.id === id);
+    if (!rec) return;
+    if (!confirm(`Xóa "${rec.name}" khỏi danh sách?`)) return;
 
-  if (!confirm(`Xóa "${rec.name}" khỏi danh sách?`)) return;
+    try {
+      await deleteDoc(doc(db, 'attendees', id));
+      // onSnapshot sẽ cập nhật participants & UI tự động
 
-  // 1) Xóa trên Firestore
-  await deleteDoc(doc(db, 'attendees', id));
-  participants = participants.filter(p => p.id !== id);
-  renderTeams();
-  renderTable();
-
-  // 2) Xóa luôn trong localStorage để index/btc cập nhật đúng
-  try {
-    const KEY = 'participants_v1';
-    const IDX = 'lastEntryIndex';
-
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      let list = JSON.parse(raw);
-
-      // lọc bỏ bản ghi cùng name + number + role (nếu có)
-      list = list.filter(p => !(
-        String(p.name || '') === String(rec.name || '') &&
-        String(p.number || '') === String(rec.number || '') &&
-        String(p.role || '') === String(rec.role || '')
-      ));
-
-      localStorage.setItem(KEY, JSON.stringify(list));
-
-      // cập nhật lại lastEntryIndex (cho result.html)
-      if (list.length === 0) {
-        localStorage.removeItem(IDX);
-      } else {
-        localStorage.setItem(IDX, String(list.length - 1));
+      // Đồng thời remove tương ứng trong localStorage trên máy này (để result/index cập nhật đúng)
+      const KEY = 'participants_v1';
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        let list = JSON.parse(raw);
+        list = list.filter(p => !(
+          String(p.name || '') === String(rec.name || '') &&
+          String(p.number || '') === String(rec.number || '') &&
+          String(p.role || '') === String(rec.role || '')
+        ));
+        localStorage.setItem(KEY, JSON.stringify(list));
+        if (list.length === 0) localStorage.removeItem('lastEntryIndex');
+        else localStorage.setItem('lastEntryIndex', String(list.length - 1));
       }
+      alert(`Đã xóa "${rec.name}" khỏi danh sách.`);
+    } catch (err) {
+      console.error('Lỗi xóa document:', err);
+      alert('Xóa thất bại.');
     }
-  } catch (err) {
-    console.error('Lỗi khi đồng bộ localStorage sau khi xóa:', err);
   }
-
-  alert(`Đã xóa "${rec.name}" khỏi danh sách.`);
-}
-
 
   // ---- Export CSV ----
   exportBtn.addEventListener('click', ()=>{
@@ -495,30 +498,23 @@
 
   // ---- Reset Firestore (xoá hết document) ----
   resetBtn.addEventListener('click', async ()=>{
-  if(!confirm('XÓA TOÀN BỘ dữ liệu trong Firestore và xoá dữ liệu trên máy hiện tại?')) return;
+    if(!confirm('XÓA TOÀN BỘ dữ liệu trong Firestore và xoá dữ liệu trên máy hiện tại?')) return;
 
-  // 1) Xoá tất cả documents trong Firestore
-  const batch = writeBatch(db);
-  participants.forEach(p => {
-    batch.delete(doc(db, 'attendees', p.id));
+    try {
+      const batch = writeBatch(db);
+      participants.forEach(p => {
+        batch.delete(doc(db, 'attendees', p.id));
+      });
+      await batch.commit();
+
+      // onSnapshot sẽ cập nhật participants -> [] và UI
+      try { localStorage.removeItem('participants_v1'); localStorage.removeItem('lastEntryIndex'); } catch(e){ console.warn(e); }
+      alert('Đã reset dữ liệu Firestore và cache trên trình duyệt này. Vui lòng reload các trang check-in.');
+    } catch (err) {
+      console.error('Lỗi khi reset Firestore:', err);
+      alert('Reset thất bại. Kiểm tra quyền & kết nối.');
+    }
   });
-  await batch.commit();
-
-  participants = [];
-  renderTeams();
-  renderTable();
-
-  // 2) Xoá luôn localStorage dùng bởi index/btc/result trên MÁY NÀY
-  try {
-    localStorage.removeItem('participants_v1');
-    localStorage.removeItem('lastEntryIndex');
-  } catch (e) {
-    console.error('Không xoá được localStorage:', e);
-  }
-
-  alert('Đã reset dữ liệu Firestore và cache trên trình duyệt này. Vui lòng reload các trang check-in.');
-});
-
 
   // ---- Sort button ----
   sortBtn.addEventListener('click', ()=>{
@@ -530,15 +526,8 @@
     renderTable();
   });
 
-  // ---- Init ----
-  (async ()=>{
-    try {
-      await loadFromFirestore();
-    } catch (err){
-      console.error('Lỗi tải Firestore:', err);
-      alert('Không tải được dữ liệu từ Firestore. Kiểm tra rule & mạng.');
-    }
-  })();
+  // ---- Init (không cần getDocs nữa; onSnapshot đã chạy ngay) ----
+
 </script>
 <footer class="site-footer">
   © 2025 Eddy – Web Developer. 47 Slots System.
