@@ -1,188 +1,198 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Check-in — BTC</title>
-
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Check-in Ban Tổ Chức (BTC)</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap" rel="stylesheet">
   <style>
-    :root{ --bg:#0f1724; --muted:#9aa4b2; --accent1:#f43f5e; --accent2:#fb923c; --text:#e6eef8; --input-bg: rgba(255,255,255,0.02); }
-    html,body{height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);margin:0;}
-    .wrap{max-width:760px;margin:48px auto;padding:36px;border-radius:14px;background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);}
-    .it-icon{ width:68px;height:68px;border-radius:999px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;background: linear-gradient(180deg, rgba(244,63,94,0.12), rgba(251,146,60,0.08)); }
-    h1{font-weight:900;text-align:center;margin:8px 0;font-size:34px}
-    .muted{color:var(--muted);text-align:center;margin-bottom:16px}
-    .label-upper{font-size:12px;color:var(--muted);font-weight:700;margin-bottom:6px;}
-    .input-lg{height:56px;border-radius:10px;background:var(--input-bg);border:1px solid rgba(255,255,255,0.04);padding:14px;color:var(--text)}
-    .btn-btc{background:linear-gradient(90deg,var(--accent1),var(--accent2));border:none;height:56px;border-radius:12px;font-weight:800;box-shadow:0 10px 30px rgba(244,63,94,0.14)}
-    .site-footer { position: fixed; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 12px; color: #64748b; padding: 8px 0; pointer-events: none; }
+    :root{--bg:#111827;--muted:#9aa4b2;--accent1:#f97316;--accent2:#ef4444;--card-bg: rgba(255,255,255,0.03);--input-bg: rgba(255,255,255,0.02);--text:#e6eef8;}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    body::before{content:"";position:fixed;inset:0;z-index:0;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="104" viewBox="0 0 120 104"><defs><pattern id="p" width="60" height="52" patternUnits="userSpaceOnUse"><path d="M30 0 L60 15 L60 37 L30 52 L0 37 L0 15 Z" fill="none" stroke="%234d5871" stroke-opacity="0.18" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="url(%23p)"/></svg>');opacity:0.28;mix-blend-mode:screen;pointer-events:none;transform:scale(1.03)}
+    .wrap{position:relative;z-index:1;max-width:760px;margin:48px auto;padding:36px;border-radius:14px;background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04); box-shadow: 0 18px 40px rgba(3,7,18,0.55);}
+    .centerTop{text-align:center;margin-bottom:18px}
+    .centerTop h1{font-size:30px;font-weight:900;margin:6px 0}
+    .centerTop .sub{color:var(--muted);margin-bottom:12px}
+    .pill{display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.02);color:var(--muted);font-weight:700}
+    .btc-card{margin-top:10px;padding:26px;border-radius:14px;background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005)); border:1px solid rgba(255,255,255,0.03);}
+    label.smallcaps{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:1px}
+    .input-large{height:56px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:var(--input-bg);padding:12px;color:inherit}
+    .btn-btc{height:56px;border-radius:12px;border:none;background: linear-gradient(90deg,var(--accent2),var(--accent1));color:white;font-weight:800}
+    .link-small{display:block;text-align:center;color:var(--muted);margin-top:12px;text-decoration:underline;font-size:14px}
+    .small-muted{color:var(--muted);font-size:13px;text-align:center;margin-top:10px}
+    @media (max-width:520px){ .wrap{padding:20px} h1{font-size:26px} }
+    .site-footer {
+  position: fixed;         /* luôn dính cuối màn hình */
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;          /* tương đương text-slate-600 */
+  padding: 16px 0;         /* tương đương p-4 */
+  pointer-events: none;    /* để không che nút bấm phía trên */
+}
+
   </style>
 </head>
 <body>
+    
+
   <div class="wrap">
-    <div style="text-align:center;">
-      <div class="it-icon" aria-hidden="true">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M12 2l3 6 6 .5-4.5 4 1.5 6L12 16 5.5 19.5 7 13 2.5 9.5 9 9z" stroke="#fff" stroke-width="0.6"/></svg>
+    <div class="centerTop">
+      <div style="width:56px;height:56px;margin:0 auto;border-radius:999px;background:rgba(225,29,72,0.08);display:flex;align-items:center;justify-content:center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2l7 3v5c0 5-3.5 9.7-7 12-3.5-2.3-7-7-7-12V5l7-3z" stroke="#ef4444" stroke-width="1.2" fill="rgba(239,68,68,0.02)"/></svg>
       </div>
+
       <h1>Check-in Ban Tổ Chức</h1>
-      <p class="muted">Dành cho thành viên BTC nhận thẻ và số.<br><span class="small-pill">Đã tham gia: <span data-joined>0</span> / <span data-total>47</span></span></p>
+      <div class="sub">Dành cho thành viên BTC nhận thẻ và số.</div>
+      <div class="pill">Đã tham gia: <span id="btcCount">0</span> / 3</div>
     </div>
 
-    <div class="mb-3">
-      <label class="label-upper">Tên của bạn</label>
-      <input id="btcName" class="form-control input-lg" placeholder="Tên thành viên BTC"/>
-    </div>
+    <div class="btc-card">
+      <div class="mb-3">
+        <label class="smallcaps">TÊN CỦA BẠN</label>
+        <input id="btcName" class="form-control input-large" placeholder="Tên thành viên BTC" />
+      </div>
 
-    <div class="d-grid mb-2">
-      <button id="btcConfirm" class="btn btn-btc">Xác Nhận BTC</button>
-    </div>
+      <div class="d-grid">
+        <button id="btcConfirm" class="btn btn-btc">Xác Nhận BTC</button>
+      </div>
 
-    <div style="text-align:center;color:var(--muted);font-size:14px">Quay lại <a href="index.html" style="color:#cfe0ff">Check-in Khách mời</a></div>
+      <a href="index.html" class="link-small">Quay lại Check-in Khách mới</a>
+
+      <div class="small-muted">Lưu ý: mục BTC chỉ chấp nhận tối đa <strong>3</strong> người. Nếu đầy, liên hệ Eddy.</div>
+    </div>
   </div>
 
-  <footer class="site-footer">© 2025 Eddy — Web Developer. 47 Slots System.</footer>
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
+  import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
-    import {
-      getFirestore, collection, doc, setDoc, serverTimestamp,
-      onSnapshot, getDocs, getDoc
-    } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
-      authDomain: "it2025-c6ed8.firebaseapp.com",
-      projectId: "it2025-c6ed8",
-      storageBucket: "it2025-c6ed8.firebasestorage.app",
-      messagingSenderId: "784468579580",
-      appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
-      measurementId: "G-ERVN4JE01P"
+  const firebaseConfig = {
+  apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
+  authDomain: "it2025-c6ed8.firebaseapp.com",
+  projectId: "it2025-c6ed8",
+  storageBucket: "it2025-c6ed8.firebasestorage.app",
+  messagingSenderId: "784468579580",
+  appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
+  measurementId: "G-ERVN4JE01P"
+};
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const attendeesCol = collection(db, 'attendees');
+
+  const KEY='participants_v1', IDX='lastEntryIndex';
+  const BTC_LIMIT = 3, TOTAL = 47;
+  const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
+
+  function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
+  function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
+  function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
+
+  function loadBTC(){
+    return loadAll().filter(item =>
+      String(item.role||'').toUpperCase()==='BTC' ||
+      String(item.teamLabel||'').toUpperCase()==='BTC'
+    );
+  }
+  function getRandomUnusedNumber(){
+    const arr=loadAll(); const used=new Set(arr.map(a=>Number(a.number))); const unused=[];
+    for(let i=1;i<=TOTAL;i++) if(!used.has(i)) unused.push(i);
+    if(!unused.length) return null;
+    return unused[Math.floor(Math.random()*unused.length)];
+  }
+  function countInTeam(arr,id){ return arr.filter(x=>x.team===id).length; }
+  function assignTeam(arr){
+    const left={}; TEAMS.forEach(t=> left[t.id]= t.capacity - countInTeam(arr,t.id));
+    const avail=Object.keys(left).filter(k=>left[k]>0).map(Number);
+    if(!avail.length) return null;
+    const pool=[]; avail.forEach(k=>{ for(let i=0;i<left[k];i++) pool.push(k); });
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+  function renderCount(){ document.getElementById('btcCount').textContent = loadBTC().length; }
+  renderCount();
+  window.addEventListener('storage', e=>{ if(e.key===KEY) renderCount(); });
+
+  const btn = document.getElementById('btcConfirm');
+  const nameInput = document.getElementById('btcName');
+
+  btn.addEventListener('click', async ()=>{
+    const nameRaw = nameInput.value || ''; const name = nameRaw.trim();
+    if(!name){ alert('Nhập tên thành viên BTC.'); return; }
+    if(loadAll().some(p=>normalizeName(p.name)===normalizeName(name))){ alert('Tên này đã tồn tại.'); return; }
+
+    const btcArr = loadBTC();
+    if(btcArr.length >= BTC_LIMIT){ alert('Số lượng BTC đã đủ (3 người).'); return; }
+
+    const all = loadAll();
+    const team = assignTeam(all);
+    if(team === null){ alert('Tất cả team đều đầy.'); return; }
+
+    const num = getRandomUnusedNumber();
+    if(num === null){ alert('Không còn số trống.'); return; }
+
+    const rec = {
+      name,
+      role:'BTC',
+      teamLabel:'BTC',
+      team,
+      number:num,
+      time:Date.now()
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-    const attendeesCol = collection(db, 'attendees');
+    // 1) lưu localStorage
+    all.push(rec);
+    saveAll(all);
+    setLastIndex(all.length - 1);
 
-    const KEY = 'participants_v1';
-    const TOTAL = 47;
-    const BTC_LIMIT = 3;
-    const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
+    // 2) ghi Firestore
+    try{
+      // tạo ID dễ đọc từ tên + số
+function makeDocIdFrom(rec) {
+  const cleanName = rec.name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+    .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ giữ chữ & số & _
+    .toLowerCase()
+    .slice(0, 20);                                   // cắt bớt cho gọn
+  return `${cleanName}_team${rec.team}_no${rec.number}`;
+}
 
-    function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
-    function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
-    function setLastIndex(i){ localStorage.setItem('lastEntryIndex', String(i)); }
-    function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
-    function countInTeam(arr, id){ return arr.filter(x=>x.team===id).length; }
-    function assignTeam(arr){
-      const left = {}; TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
-      const avail = Object.keys(left).filter(k=> left[k] > 0).map(Number);
-      if(!avail.length) return null;
-      const pool = [];
-      avail.forEach(k=> { for(let i=0;i<left[k];i++) pool.push(k); });
-      return pool[Math.floor(Math.random()*pool.length)];
+// ...
+const docId = makeDocIdFrom(rec);
+const ref = doc(attendeesCol, docId);
+
+await setDoc(ref, {
+  name: rec.name,
+  team: rec.team,
+  teamLabel: rec.teamLabel,
+  number: rec.number,
+  role: rec.role,
+  createdAt: serverTimestamp()
+});
+
+    }catch(err){
+      console.error('Lỗi Firestore BTC:', err);
     }
-    function getRandomUnusedNumber(){
-      const arr = loadAll();
-      const used = new Set(arr.map(a=>Number(a.number)));
-      const unused = [];
-      for(let i=1;i<=TOTAL;i++) if(!used.has(i)) unused.push(i);
-      if(!unused.length) return null;
-      return unused[Math.floor(Math.random()*unused.length)];
-    }
-    function makeDocIdFrom(rec){
-      const cleanName = rec.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g,"_").toLowerCase().slice(0,20);
-      return `btc_${cleanName}_no${rec.number}`;
-    }
 
-    // realtime update total display
-    function listenCounts(){
-      onSnapshot(attendeesCol, (snap)=>{
-        const totalCount = snap.size;
-        document.querySelectorAll('[data-joined]').forEach(el=>el.textContent = totalCount);
-        document.querySelectorAll('[data-total]').forEach(el=>el.textContent = TOTAL);
+    window.location.href = 'result.html';
+  });
 
-        // optional: show BTC-only count elsewhere if needed
-        const docs = snap.docs.map(d=>d.data());
-        const btcCount = docs.filter(d => String(d.role||'').toUpperCase() === 'BTC' || String(d.teamLabel||'').toUpperCase() === 'BTC').length;
-        // you could show btcCount somewhere if you want
-      }, (err)=>{ console.error('Lỗi onSnapshot BTC:', err); });
-    }
-    listenCounts();
-
-    // ensureCanCheckIn like index
-    async function ensureCanCheckIn(){
-      const checked = localStorage.getItem('hasCheckedIn');
-      const myDocId = localStorage.getItem('myDocId');
-      if(checked !== '1') return true;
-      if(!myDocId){ localStorage.removeItem('hasCheckedIn'); return true; }
-      try{
-        const snap = await getDoc(doc(db,'attendees', myDocId));
-        if(snap.exists()){ window.location.href = 'result.html'; return false; }
-        else { localStorage.removeItem('hasCheckedIn'); localStorage.removeItem('myDocId'); return true; }
-      } catch(err){ console.error('Lỗi ensureCanCheckIn BTC:', err); return true; }
-    }
-    await ensureCanCheckIn();
-
-    // UI
-    const btcBtn = document.getElementById('btcConfirm');
-    const btcName = document.getElementById('btcName');
-
-    btcBtn.addEventListener('click', async ()=>{
-      const name = btcName.value.trim();
-      if(!name){ alert('Nhập tên thành viên BTC'); return; }
-
-      const all = loadAll();
-      if(all.some(p => normalizeName(p.name) === normalizeName(name))){ alert('Tên này đã tồn tại.'); return; }
-
-      // check BTC count from Firestore
-      try {
-        const snapAll = await getDocs(attendeesCol);
-        const docs = snapAll.docs.map(d => d.data());
-        const btcCount = docs.filter(d => String(d.role||'').toUpperCase() === 'BTC' || String(d.teamLabel||'').toUpperCase() === 'BTC').length;
-        if(btcCount >= BTC_LIMIT){ alert(`Số lượng BTC đã đủ (${btcCount}/${BTC_LIMIT})`); return; }
-      } catch(err) {
-        console.error('Lỗi đọc attendees (BTC):', err);
-        alert('Lỗi kết nối Firestore. Thử lại sau.'); return;
-      }
-
-      // assign team & number
-      const team = assignTeam(all);
-      if(team === null){ alert('Tất cả team đều đầy.'); return; }
-      const num = getRandomUnusedNumber();
-      if(num === null){ alert('Không còn số trống.'); return; }
-
-      const rec = { name, role:'BTC', teamLabel:'BTC', team, number:num, time:Date.now() };
-      all.push(rec); saveAll(all); setLastIndex(all.length - 1);
-
-      try {
-        const docId = makeDocIdFrom(rec);
-        const ref = doc(attendeesCol, docId);
-        await setDoc(ref, {
-          name: rec.name, role: rec.role, team: rec.team, teamLabel: rec.teamLabel,
-          number: rec.number, createdAt: serverTimestamp()
-        });
-
-        localStorage.setItem('hasCheckedIn','1');
-        localStorage.setItem('myDocId', docId);
-        window.location.href = 'result.html';
-      } catch(err) {
-        console.error('Lỗi ghi Firestore (BTC):', err);
-        alert('Không thể ghi dữ liệu. Vui lòng thử lại.');
-      }
-    });
-
-    btcName.addEventListener('keypress', e=>{ if(e.key==='Enter') btcBtn.click(); });
-
-  </script>
+  nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter'){ e.preventDefault(); btn.click(); } });
+</script>
 
 <footer class="site-footer">
   © 2025 Eddy – Web Developer. 47 Slots System.
 </footer>
 </body>
 </html>
-
-
-
-
