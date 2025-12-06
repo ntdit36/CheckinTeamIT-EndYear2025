@@ -71,7 +71,6 @@
   </div>
 
 <script type="module">
-  import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
   // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
@@ -102,7 +101,7 @@
   const KEY       = 'participants_v1';
   const IDX       = 'lastEntryIndex';
   const TOTAL     = 47;
-  
+  const BTC_LIMIT = 3;
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
   // ============= HÀM LOCALSTORAGE =============
@@ -154,23 +153,26 @@
   }
 
   // ============= REALTIME ĐẾM BTC TỪ FIRESTORE =============
-  const BTC_LIMIT = 3; // giới hạn BTC
+  function listenBTCCount() {
+    onSnapshot(attendeesCol, (snap) => {
+      const docs = snap.docs.map(d => d.data());
+      const btcCount = docs.filter(d =>
+        String(d.role || '').toUpperCase() === 'BTC' ||
+        String(d.teamLabel || '').toUpperCase() === 'BTC'
+      ).length;
 
-function listenBTCCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    const docs = snap.docs.map(d => d.data());
-    const btcCount = docs.filter(d => String(d.role||'').toUpperCase() === 'BTC' || String(d.teamLabel||'').toUpperCase() === 'BTC').length;
+      // gán vào mọi phần tử có data-btc-count
+      document.querySelectorAll('[data-btc-count]').forEach(el => {
+        el.textContent = btcCount;
+      });
 
-    document.querySelectorAll('[data-btc-count]').forEach(el => el.textContent = btcCount);
+      // console.log('Realtime btcCount =', btcCount);
+    }, (err) => {
+      console.error('Lỗi onSnapshot BTC:', err);
+    });
+  }
 
-    // Nếu bạn muốn BTC page cũng hiển thị tổng (bao gồm BTC), có thể update [data-joined] giống index:
-    document.querySelectorAll('[data-joined]').forEach(el => el.textContent = snap.size);
-  }, (err) => {
-    console.error('Lỗi onSnapshot BTC:', err);
-  });
-}
-listenBTCCount();
-
+  listenBTCCount();
 
   // ============= XỬ LÝ NÚT CHECK-IN BTC =============
   const btnBTC   = document.getElementById('btcConfirm');
@@ -239,47 +241,24 @@ listenBTCCount();
     setLastIndex(all.length - 1);
 
     // 2) Ghi Firestore
-    // --- Cách 1: check tổng hiện tại trước khi ghi ---
-// --- Cách 1: check tổng hiện tại trước khi ghi ---
-try {
-  // Lấy tổng hiện tại (bao gồm BTC)
-  const snapAll = await getDocs(attendeesCol);
-  const currentTotal = snapAll.size;
+    try {
+      const docId = makeDocIdFrom(rec);
+      const ref   = doc(attendeesCol, docId);
+      await setDoc(ref, {
+        name: rec.name,
+        role: rec.role,
+        team: rec.team,
+        teamLabel: rec.teamLabel,
+        number: rec.number,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error('Lỗi Firestore BTC:', err);
+    }
 
-  if (currentTotal >= TOTAL) {
-    alert(`Đã đủ ${TOTAL} người tham gia. Không thể đăng ký thêm.`);
-    return; // dừng, không lưu
+    // 3) Chuyển sang trang kết quả
+    window.location.href = 'result.html';
   }
-
-  // nếu chưa đầy: lưu local + ghi lên Firestore
-  all.push(rec);
-  saveAll(all);
-  setLastIndex(all.length - 1);
-
-  const docId = makeDocIdFrom(rec);
-  const ref = doc(attendeesCol, docId);
-  await setDoc(ref, {
-    name: rec.name,
-    team: rec.team,
-    teamLabel: rec.teamLabel,
-    number: rec.number,
-    role: rec.role,
-    createdAt: serverTimestamp()
-  });
-
-  // lưu thông tin khóa trên client
-  localStorage.setItem('hasCheckedIn', '1');
-  localStorage.setItem('myDocId', docId);
-
-  window.location.href = 'result.html';
-} catch (err) {
-  console.error('Lỗi khi ghi Firestore (Cách1):', err);
-  alert('Có lỗi khi xử lý. Vui lòng thử lại.');
-}
-
-  };
-  
-
 </script>
 
 
@@ -288,5 +267,7 @@ try {
 </footer>
 </body>
 </html>
+
+
 
 

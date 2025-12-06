@@ -6,7 +6,6 @@
   <title>Check-in — Public</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap" rel="stylesheet">
-  
   <style>
     :root{
       --bg:#111827;
@@ -86,9 +85,6 @@
 
 
 <script type="module">
-  
-import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
-
   // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
@@ -118,7 +114,7 @@ import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-fire
   // ============= CẤU HÌNH GAME CỤC BỘ =============
   const KEY   = 'participants_v1';
   const IDX   = 'lastEntryIndex';
-  
+  const TOTAL = 47;
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
   // ============= HÀM LOCALSTORAGE =============
@@ -161,28 +157,31 @@ import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-fire
   }
 
   // ============= REALTIME COUNTER TỪ FIRESTORE =============
-  // TOTAL = tổng số slot (bao gồm BTC). Thay 47 bằng 15 nếu muốn giới hạn 15.
-const TOTAL = 47; 
+  function listenJoinedCount() {
+    onSnapshot(attendeesCol, (snap) => {
+      const docs = snap.docs.map(d => d.data());
 
-function listenJoinedCount() {
-  onSnapshot(attendeesCol, (snap) => {
-    // Tổng số người hiện có (bao gồm BTC)
-    const totalCount = snap.size; // hoặc snap.docs.length
+      // Đếm khách (role != BTC)
+      const guestCount = docs.filter(d =>
+        String(d.role || '').toUpperCase() !== 'BTC'
+      ).length;
 
-    // Hiển thị vào các span data-joined / data-total
-    document.querySelectorAll('[data-joined]').forEach(el => el.textContent = totalCount);
-    document.querySelectorAll('[data-total]').forEach(el => el.textContent = TOTAL);
+      // Gán vào tất cả phần tử có data-joined / data-total
+      document.querySelectorAll('[data-joined]').forEach(el => {
+        el.textContent = guestCount;
+      });
+      document.querySelectorAll('[data-total]').forEach(el => {
+        el.textContent = TOTAL;
+      });
 
-    // Nếu muốn highlight khi đầy:
-    if(totalCount >= TOTAL){
-      document.querySelectorAll('[data-joined]').forEach(el => el.style.color = '#f97316'); // ví dụ đổi màu
-    }
-  }, (err) => {
-    console.error('Lỗi onSnapshot index:', err);
-  });
-}
-listenJoinedCount();
+      // console.log('Realtime guestCount =', guestCount);
+    }, (err) => {
+      console.error('Lỗi onSnapshot index:', err);
+    });
+  }
 
+  // Gọi realtime listener khi load trang
+  listenJoinedCount();
 
   // ============= XỬ LÝ NÚT CHECK-IN =============
   const btn = document.getElementById('checkBtn');
@@ -235,42 +234,28 @@ listenJoinedCount();
     setLastIndex(all.length - 1);
 
     // 2) Ghi lên Firestore
-    // --- Cách 1: check tổng hiện tại trước khi ghi ---
-try {
-  // Lấy tổng hiện tại (bao gồm BTC)
-  const snapAll = await getDocs(attendeesCol);
-  const currentTotal = snapAll.size;
+    try {
+      const docId = makeDocIdFrom(rec);
+      const ref   = doc(attendeesCol, docId);
+      await setDoc(ref, {
+        name: rec.name,
+        team: rec.team,
+        teamLabel: rec.teamLabel,
+        number: rec.number,
+        role: rec.role,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error('Lỗi ghi Firestore:', err);
+      // vẫn cho đi tiếp vì localStorage đã có
+    }
 
-  if (currentTotal >= TOTAL) {
-    alert(`Đã đủ ${TOTAL} người tham gia. Không thể đăng ký thêm.`);
-    return; // dừng, không lưu
-  }
-
-  // nếu chưa đầy: lưu local + ghi lên Firestore
-  all.push(rec);
-  saveAll(all);
-  setLastIndex(all.length - 1);
-
-  const docId = makeDocIdFrom(rec);
-  const ref = doc(attendeesCol, docId);
-  await setDoc(ref, {
-    name: rec.name,
-    team: rec.team,
-    teamLabel: rec.teamLabel,
-    number: rec.number,
-    role: rec.role,
-    createdAt: serverTimestamp()
+    // 3) Chuyển sang trang kết quả
+    window.location.href = 'result.html';
   });
 
-  // lưu thông tin khóa trên client
-  localStorage.setItem('hasCheckedIn', '1');
-  localStorage.setItem('myDocId', docId);
-
-  window.location.href = 'result.html';
-} catch (err) {
-  console.error('Lỗi khi ghi Firestore (Cách1):', err);
-  alert('Có lỗi khi xử lý. Vui lòng thử lại.');
-}
+  nameInput.addEventListener('keypress', e=>{
+    if(e.key === 'Enter') btn.click();
   });
 </script>
 
@@ -282,6 +267,7 @@ try {
 
 </body>
 </html>
+
 
 
 
