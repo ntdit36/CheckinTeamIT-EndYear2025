@@ -76,14 +76,10 @@
   import {
     getFirestore,
     collection,
-    query,
-    orderBy,
-    // thay đổi: dùng onSnapshot để realtime
-    onSnapshot,
     doc,
-    updateDoc,
-    deleteDoc,
-    writeBatch
+    setDoc,
+    serverTimestamp,
+    onSnapshot
   } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
   // ============= CẤU HÌNH FIREBASE (GIỐNG INDEX) =============
