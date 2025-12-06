@@ -47,7 +47,11 @@
 
       <h1>Check-in Ban Tổ Chức</h1>
       <div class="sub">Dành cho thành viên BTC nhận thẻ và số.</div>
-      <div class="pill">Đã tham gia: <span id="btcCount">0</span> / 3</div>
+      <div class="muted">
+  Đã tham gia BTC:
+  <span data-btc-count>0</span> / 3
+</div>
+
     </div>
 
     <div class="btc-card">
@@ -66,8 +70,8 @@
     </div>
   </div>
 
-<!-- Thay thế phần script type="module" hiện tại (chỉ paste phần module) -->
 <script type="module">
+  // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
     getFirestore,
@@ -82,6 +86,7 @@
     writeBatch
   } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
+  // ============= CẤU HÌNH FIREBASE (GIỐNG INDEX) =============
   const firebaseConfig = {
     apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
     authDomain: "it2025-c6ed8.firebaseapp.com",
@@ -93,99 +98,171 @@
   };
 
   const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  const db  = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
 
-  // ... giữ nguyên config, DOM refs, helper funcs (escapeHtml, roleOf, teamLabelOf, countInTeamId, renderTeams, renderTable, v.v.) ...
+  // ============= CẤU HÌNH GAME CỤC BỘ =============
+  const KEY       = 'participants_v1';
+  const IDX       = 'lastEntryIndex';
+  const TOTAL     = 47;
+  const BTC_LIMIT = 3;
+  const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
-  // === Realtime listener thay cho getDocs() một lần ===
-  // Ghi chú: dùng orderBy('createdAt','asc') giống trước để giữ thứ tự
-  const attendeesQuery = query(attendeesCol, orderBy('createdAt', 'asc'));
+  // ============= HÀM LOCALSTORAGE =============
+  function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
+  function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
+  function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
-  // Đồng bộ localStorage dựa vào participants để các trang trên cùng 1 máy có thể tham khảo
-  function syncLocalStorageFromParticipants() {
-    try {
-      const KEY = 'participants_v1';
-      // Lưu chỉ các trường cần thiết để giảm dung lượng
-      const dump = participants.map(p => ({
-        id: p.id,
-        name: p.name || '',
-        number: p.number || null,
-        role: p.role || '',
-        team: p.team || null,
-        teamLabel: p.teamLabel || '',
-        slogan: p.slogan || '',
-        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
-      }));
-      localStorage.setItem(KEY, JSON.stringify(dump));
-      localStorage.setItem('lastEntryIndex', String(Math.max(0, dump.length - 1)));
-    } catch (e) {
-      console.warn('Không thể sync localStorage:', e);
-    }
+  // ============= PHÂN TEAM + SỐ MAY MẮN =============
+  function countInTeam(arr, id){ return arr.filter(x=>x.team===id).length; }
+
+  function assignTeam(arr){
+    const left = {};
+    TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
+    const avail = Object.keys(left).filter(k=> left[k] > 0).map(Number);
+    if(!avail.length) return null;
+    const pool = [];
+    avail.forEach(k=> { for(let i=0;i<left[k];i++) pool.push(k); });
+    return pool[Math.floor(Math.random()*pool.length)];
   }
 
-  // Listener realtime
-  const unsubscribe = onSnapshot(attendeesQuery, (snap) => {
-    // Cập nhật toàn bộ participants từ snapshot — cách đơn giản, chính xác
-    participants = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Cập nhật UI
-    renderTeams();
-    renderTable();
-    // Đồng bộ localStorage TRÊN MÁY NÀY (không tác động tới máy khác)
-    syncLocalStorageFromParticipants();
-  }, (err) => {
-    console.error('Lỗi realtime Firestore:', err);
-    alert('Không thể kết nối realtime tới Firestore. Kiểm tra rules & kết nối mạng.');
-  });
-
-  // Nếu trước đó bạn có các hàm dùng getDocs() — bỏ/hủy chúng. 
-  // Các phần khác (edit, delete, export, reset, sort) giữ nguyên nhưng
-  // chỉnh sửa nhỏ: khi xóa/ cập nhật, không cố gắng thao tác trực tiếp trên participants rồi render,
-  // vì onSnapshot sẽ tự đẩy cập nhật. Tuy nhiên để UX mượt hơn, ta vẫn cập nhật local state sau update/delete.
-
-  // Ví dụ cập nhật onDeleteClick: (giữ logic xóa Firestore, để onSnapshot cập nhật UI; nhưng vẫn remove localStorage entry tương ứng)
-  async function onDeleteClick(e){
-    const id = e.currentTarget.dataset.id;
-    const rec = participants.find(p => p.id === id);
-    if (!rec) return;
-    if (!confirm(`Xóa "${rec.name}" khỏi danh sách?`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'attendees', id));
-      // onSnapshot sẽ cập nhật participants & UI.
-      // Đồng thời ta cập nhật localStorage để phản ánh thay đổi trên máy này:
-      setTimeout(syncLocalStorageFromParticipants, 300);
-      alert(`Đã xóa "${rec.name}" khỏi danh sách.`);
-    } catch (err) {
-      console.error('Lỗi xóa document:', err);
-      alert('Xóa thất bại. Kiểm tra quyền truy cập Firestore.');
-    }
+  function getRandomUnusedNumber(){
+    const arr = loadAll();
+    const used = new Set(arr.map(a=>Number(a.number)));
+    const unused = [];
+    for(let i=1;i<=TOTAL;i++) if(!used.has(i)) unused.push(i);
+    if(!unused.length) return null;
+    return unused[Math.floor(Math.random()*unused.length)];
   }
 
-  // Reset vẫn dùng batch.commit — onSnapshot sẽ báo về và UI bị làm trống
-  resetBtn.addEventListener('click', async ()=>{
-    if(!confirm('XÓA TOÀN BỘ dữ liệu trong Firestore và xoá dữ liệu trên máy hiện tại?')) return;
-    try {
-      const batch = writeBatch(db);
-      participants.forEach(p => {
-        batch.delete(doc(db, 'attendees', p.id));
+  // ============= LẤY BTC TRONG LOCAL (CHO GIỚI HẠN 3 NGƯỜI) =============
+  function loadBTC(){
+    const all = loadAll();
+    return all.filter(item =>
+      String(item.role || '').toUpperCase() === 'BTC' ||
+      String(item.teamLabel || '').toUpperCase() === 'BTC'
+    );
+  }
+
+  // ============= ID ĐẸP TRONG FIRESTORE =============
+  function makeDocIdFrom(rec) {
+    const cleanName = rec.name
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
+      .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ chữ/số/_
+      .toLowerCase()
+      .slice(0, 20);
+
+    return `btc_${cleanName}_no${rec.number}`;
+  }
+
+  // ============= REALTIME ĐẾM BTC TỪ FIRESTORE =============
+  function listenBTCCount() {
+    onSnapshot(attendeesCol, (snap) => {
+      const docs = snap.docs.map(d => d.data());
+      const btcCount = docs.filter(d =>
+        String(d.role || '').toUpperCase() === 'BTC' ||
+        String(d.teamLabel || '').toUpperCase() === 'BTC'
+      ).length;
+
+      // gán vào mọi phần tử có data-btc-count
+      document.querySelectorAll('[data-btc-count]').forEach(el => {
+        el.textContent = btcCount;
       });
-      await batch.commit();
-      // onSnapshot sẽ cập nhật participants -> []
-      // Xoá localStorage cục bộ:
-      try { localStorage.removeItem('participants_v1'); localStorage.removeItem('lastEntryIndex'); } catch(e){console.warn(e);}
-      alert('Đã reset dữ liệu Firestore và cache trên trình duyệt này. Vui lòng reload các trang check-in.');
-    } catch (err) {
-      console.error('Lỗi khi reset Firestore:', err);
-      alert('Reset thất bại. Kiểm tra quyền & kết nối.');
+
+      // console.log('Realtime btcCount =', btcCount);
+    }, (err) => {
+      console.error('Lỗi onSnapshot BTC:', err);
+    });
+  }
+
+  listenBTCCount();
+
+  // ============= XỬ LÝ NÚT CHECK-IN BTC =============
+  const btnBTC   = document.getElementById('btcConfirm');
+  const nameBTC  = document.getElementById('btcName');
+
+  if (!btnBTC || !nameBTC) {
+    console.warn('Không tìm thấy #btcConfirm hoặc #btcName trong HTML.');
+  } else {
+    btnBTC.addEventListener('click', onBTCSubmit);
+    nameBTC.addEventListener('keypress', e=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        onBTCSubmit();
+      }
+    });
+  }
+
+  async function onBTCSubmit(){
+    const raw = nameBTC.value || '';
+    const name = raw.trim();
+    if(!name){
+      alert('Nhập tên thành viên BTC.');
+      return;
     }
-  });
 
-  // Sort/export/edit logic vẫn hoạt động. Nếu muốn, bạn có thể giữ phần saveEditBtn listener nguyên vẹn
-  // nhưng lưu ý: khi updateDoc thành công, onSnapshot sẽ nhận thay đổi và cập nhật UI (tốt).
-  // === Init: không cần gọi loadFromFirestore nữa vì onSnapshot đã lắng nghe ngay ===
+    const all = loadAll();
 
-  // Nếu cần dừng realtime listener khi rời trang: window.addEventListener('beforeunload', ()=> unsubscribe());
+    // chống trùng tên với bất kỳ ai
+    if(all.some(p => normalizeName(p.name) === normalizeName(name))){
+      alert('Tên này đã tồn tại trong danh sách.');
+      return;
+    }
+
+    // giới hạn BTC theo local (3 người)
+    const btcArr = loadBTC();
+    if(btcArr.length >= BTC_LIMIT){
+      alert('Số lượng BTC đã đủ (3 người).');
+      return;
+    }
+
+    // phân team + số (BTC vẫn chiếm slot & số như khách)
+    const team = assignTeam(all);
+    if(team === null){
+      alert('Tất cả team đều đầy.');
+      return;
+    }
+
+    const num = getRandomUnusedNumber();
+    if(num === null){
+      alert('Không còn số trống.');
+      return;
+    }
+
+    const rec = {
+      name,
+      role: 'BTC',
+      teamLabel: 'BTC',
+      team,
+      number: num,
+      time: Date.now()
+    };
+
+    // 1) Lưu localStorage (cho result/admin cũ dùng)
+    all.push(rec);
+    saveAll(all);
+    setLastIndex(all.length - 1);
+
+    // 2) Ghi Firestore
+    try {
+      const docId = makeDocIdFrom(rec);
+      const ref   = doc(attendeesCol, docId);
+      await setDoc(ref, {
+        name: rec.name,
+        role: rec.role,
+        team: rec.team,
+        teamLabel: rec.teamLabel,
+        number: rec.number,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error('Lỗi Firestore BTC:', err);
+    }
+
+    // 3) Chuyển sang trang kết quả
+    window.location.href = 'result.html';
+  }
 </script>
 
 
@@ -194,3 +271,7 @@
 </footer>
 </body>
 </html>
+
+
+
+
