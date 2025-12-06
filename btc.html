@@ -71,7 +71,7 @@
   </div>
 
 <script type="module">
-  
+  import { getDocs } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
   // ============= IMPORT FIREBASE =============
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
@@ -240,6 +240,7 @@ listenBTCCount();
 
     // 2) Ghi Firestore
     // --- Cách 1: check tổng hiện tại trước khi ghi ---
+// --- Cách 1: check tổng hiện tại trước khi ghi ---
 try {
   // Lấy tổng hiện tại (bao gồm BTC)
   const snapAll = await getDocs(attendeesCol);
@@ -276,6 +277,9 @@ try {
   alert('Có lỗi khi xử lý. Vui lòng thử lại.');
 }
 
+  };
+  
+
 </script>
 
 
@@ -284,6 +288,5 @@ try {
 </footer>
 </body>
 </html>
-
 
 
