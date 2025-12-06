@@ -88,29 +88,33 @@
   // --- Firebase setup ---
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
+    getFirestore,
+    collection,
+    doc,
+    setDoc,
+    serverTimestamp,
+    getDocs,
+    query,
+    orderBy,
+    onSnapshot
+  } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
   const firebaseConfig = {
-  apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
-  authDomain: "it2025-c6ed8.firebaseapp.com",
-  projectId: "it2025-c6ed8",
-  storageBucket: "it2025-c6ed8.firebasestorage.app",
-  messagingSenderId: "784468579580",
-  appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
-  measurementId: "G-ERVN4JE01P"
-};
+    apiKey: "AIzaSyAXtnsgM2cu7IdOOq5ZMPuNHpcUtTc_93g",
+    authDomain: "it2025-c6ed8.firebaseapp.com",
+    projectId: "it2025-c6ed8",
+    storageBucket: "it2025-c6ed8.firebasestorage.app",
+    messagingSenderId: "784468579580",
+    appId: "1:784468579580:web:1b981ba6370aa7cf1b7379",
+    measurementId: "G-ERVN4JE01P"
+  };
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
+  const attendeesQuery = query(attendeesCol, orderBy('createdAt', 'asc'));
 
-  // --- Phần logic cũ (localStorage + random team/number) giữ nguyên ---
-
+  // --- Local constants & helpers (giữ gần giống cũ) ---
   const KEY = 'participants_v1';
   const IDX = 'lastEntryIndex';
   const TOTAL = 47;
@@ -121,104 +125,170 @@
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
   function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
-  function countInTeam(arr, id){ return arr.filter(x=>x.team===id).length; }
-  function assignTeam(arr){
-    const left = {}; TEAMS.forEach(t=> left[t.id] = t.capacity - countInTeam(arr,t.id));
-    const avail = Object.keys(left).filter(k=> left[k] > 0).map(Number);
-    if(!avail.length) return null;
+  // --- UI refs ---
+  const joinedEl = document.getElementById('joined');
+  const totalEl = document.getElementById('total');
+  const btn = document.getElementById('checkBtn');
+  const nameInput = document.getElementById('nameInput');
+  const btcLink = document.getElementById('btcLink');
+
+  // update UI counts from localStorage (fallback)
+  function updateCountsFromLocal() {
+    joinedEl.textContent = loadAll().length;
+    totalEl.textContent = TOTAL;
+  }
+  updateCountsFromLocal();
+  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCountsFromLocal(); });
+
+  // --- Realtime listener để cập nhật "Đã tham gia" trên page này ngay khi Firestore thay đổi ---
+  // Cập nhật both UI và localStorage trên máy này để giữ backward compatibility với các page dùng localStorage.
+  onSnapshot(attendeesQuery, (snap) => {
+    try {
+      const remote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // cập nhật số đã tham gia hiển thị
+      joinedEl.textContent = remote.length;
+      totalEl.textContent = TOTAL;
+      // sync localStorage (ghi những trường cần thiết)
+      const dump = remote.map(p => ({
+        name: p.name || '',
+        number: p.number || null,
+        role: p.role || '',
+        team: p.team || null,
+        teamLabel: p.teamLabel || '',
+        slogan: p.slogan || '',
+        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
+      }));
+      try { localStorage.setItem(KEY, JSON.stringify(dump)); localStorage.setItem(IDX, String(Math.max(0, dump.length - 1))); } catch(e){ /* ignore */ }
+      // nếu đầy thì disable button
+      btn.disabled = (remote.length >= TOTAL);
+    } catch (err) {
+      console.warn('Error processing realtime snapshot:', err);
+    }
+  }, (err) => {
+    console.error('Realtime listener error:', err);
+    // fallback: UI vẫn dùng localStorage
+  });
+
+  // --- Server-aware helpers ---
+  // build available numbers and team capacities based on a given list (from server)
+  function computeAvailable(serverList){
+    const usedNumbers = new Set(serverList.map(s => Number(s.number)).filter(n => !isNaN(n)));
+    const availNumbers = [];
+    for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
+
+    const teamLeft = {};
+    TEAMS.forEach(t => {
+      const used = serverList.filter(p => Number(p.team) === t.id).length;
+      teamLeft[t.id] = Math.max(0, t.capacity - used);
+    });
+
+    return { availNumbers, teamLeft };
+  }
+
+  // pick a team randomly weighted by remaining slots (server-aware)
+  function pickTeam(teamLeft){
     const pool = [];
-    avail.forEach(k=> { for(let i=0;i<left[k];i++) pool.push(k); });
+    Object.keys(teamLeft).forEach(k => {
+      const left = teamLeft[k];
+      for(let i=0;i<left;i++) pool.push(Number(k));
+    });
+    if(pool.length === 0) return null;
     return pool[Math.floor(Math.random()*pool.length)];
   }
 
-  function getRandomUnusedNumber(){
-    const arr = loadAll();
-    const used = new Set(arr.map(a=>Number(a.number)));
-    const unused = [];
-    for(let i=1;i<=TOTAL;i++) if(!used.has(i)) unused.push(i);
-    if(!unused.length) return null;
-    return unused[Math.floor(Math.random()*unused.length)];
+  // make doc id deterministic-ish from name+team+no, fallback add random suffix
+  function makeDocIdFrom(rec){
+    const cleanName = rec.name
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .toLowerCase()
+      .slice(0,20);
+    return `${cleanName}_team${rec.team}_no${rec.number}`;
   }
 
-  function updateCounts(){
-    document.getElementById('joined').textContent = loadAll().length;
-    document.getElementById('total').textContent = TOTAL;
-  }
-  updateCounts();
-  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCounts(); });
-
-  // --- Xử lý submit: lưu localStorage + GHI LÊN FIRESTORE ---
-  const btn = document.getElementById('checkBtn');
-  const nameInput = document.getElementById('nameInput');
-
+  // --- Submit handler: dùng dữ liệu từ server trước khi quyết định team/number ---
   btn.addEventListener('click', async ()=>{
     const name = nameInput.value.trim();
     if(!name){ alert('Vui lòng nhập tên.'); return; }
 
-    const all = loadAll();
-    if(all.some(p => normalizeName(p.name) === normalizeName(name))){
+    // 1) lấy snapshot hiện tại từ server (1 lần)
+    let serverDocs = [];
+    try {
+      const snap = await getDocs(attendeesQuery);
+      serverDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (err) {
+      console.error('Lỗi khi lấy dữ liệu server:', err);
+      alert('Không lấy được dữ liệu từ server. Thử lại sau.');
+      return;
+    }
+
+    // 2) check trùng tên trên server (tránh trùng giữa các máy)
+    if(serverDocs.some(p => normalizeName(p.name) === normalizeName(name))){
       alert('Tên này đã tồn tại.'); return;
     }
-    if(all.length >= TOTAL){ alert('Đã đầy.'); return; }
+    if(serverDocs.length >= TOTAL){ alert('Đã đầy.'); return; }
 
-    const team = assignTeam(all);
-    if(team === null){ alert('Tất cả team đều đầy.'); return; }
+    // 3) compute available numbers & team slots based on server data
+    const { availNumbers, teamLeft } = computeAvailable(serverDocs);
+    if(availNumbers.length === 0){ alert('Không còn số trống.'); return; }
+    const chosenNumber = availNumbers[Math.floor(Math.random()*availNumbers.length)];
+    const chosenTeam = pickTeam(teamLeft);
+    if(chosenTeam === null){ alert('Tất cả team đều đầy.'); return; }
 
-    const num = getRandomUnusedNumber();
-    if(num === null){ alert('Không còn số trống.'); return; }
-
+    // 4) build record
     const rec = {
       name,
-      team,
-      number: num,
+      team: chosenTeam,
+      number: chosenNumber,
       time: Date.now(),
-      teamLabel: 'TEAM ' + team,
+      teamLabel: 'TEAM ' + chosenTeam,
       role: 'GUEST'
     };
 
-    // 1) Lưu localStorage (để result/admin hiện tại vẫn chạy)
-    all.push(rec);
-    saveAll(all);
-    setLastIndex(all.length - 1);
-
-    // 2) Ghi thêm lên Firestore
+    // 5) update localStorage ngay (ngay lập tức phản hồi UX)
     try {
-      // tạo ID dễ đọc từ tên + số
-function makeDocIdFrom(rec) {
-  const cleanName = rec.name
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu
-    .replace(/[^a-zA-Z0-9]+/g, "_")                  // chỉ giữ chữ & số & _
-    .toLowerCase()
-    .slice(0, 20);                                   // cắt bớt cho gọn
-  return `${cleanName}_team${rec.team}_no${rec.number}`;
-}
+      const all = loadAll();
+      all.push(rec);
+      saveAll(all);
+      setLastIndex(all.length - 1);
+    } catch(e){ console.warn('Không lưu localStorage:', e); }
 
-// ...
-const docId = makeDocIdFrom(rec);
-const ref = doc(attendeesCol, docId);
-
-await setDoc(ref, {
-  name: rec.name,
-  team: rec.team,
-  teamLabel: rec.teamLabel,
-  number: rec.number,
-  role: rec.role,
-  createdAt: serverTimestamp()
-});
-
-      // không cần chờ xong mới redirect cũng được, nhưng an toàn thì chờ
+    // 6) GHI LÊN FIRESTORE. Tạo doc id, nếu đã tồn tại (rất hiếm) thêm suffix random và thử lại
+    try {
+      let docId = makeDocIdFrom(rec);
+      let attempts = 0;
+      while(attempts < 4){
+        const ref = doc(attendeesCol, docId);
+        try {
+          // setDoc với overwrite — nhưng docId được thiết kế để hiếm trùng; nếu trùng thì thử lại với suffix
+          await setDoc(ref, {
+            name: rec.name,
+            team: rec.team,
+            teamLabel: rec.teamLabel,
+            number: rec.number,
+            role: rec.role,
+            createdAt: serverTimestamp()
+          });
+          break; // thành công
+        } catch (err) {
+          // có thể thất bại nếu docId bị khoá hay permission; thay id và thử lại
+          console.warn('Lỗi setDoc, thử id khác:', err);
+          attempts++;
+          docId = `${docId}_${Math.random().toString(36).slice(2,8)}`;
+        }
+      }
     } catch (err) {
       console.error('Lỗi ghi Firestore:', err);
-      // vẫn cho redirect, vì localStorage đã có → event không bị kẹt
+      // mặc kệ: localStorage đã có bản ghi để UX, nhưng Firestore chưa có -> admin realtime không thấy
     }
 
-    // Chuyển sang trang kết quả
+    // 7) chuyển sang trang result
     window.location.href = 'result.html';
   });
 
   nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') btn.click(); });
-</script>
 
+</script>
 <footer class="site-footer">
   © 2025 Eddy – Web Developer. 47 Slots System.
 </footer>
