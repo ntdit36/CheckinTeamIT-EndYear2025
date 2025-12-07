@@ -112,18 +112,17 @@
   </div>
 
 <script type="module">
-  // FIREBASE + LOGIC (index.html) - đã chỉnh cho guest-total riêng vs btc
+  // Firebase + logic (transaction-safe)
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
     getFirestore,
     collection,
     doc,
-    setDoc,
-    serverTimestamp,
-    getDocs,
     query,
     orderBy,
-    onSnapshot
+    onSnapshot,
+    runTransaction,
+    serverTimestamp
   } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
   const firebaseConfig = {
@@ -139,14 +138,12 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const attendeesCol = collection(db, 'attendees');
-  const attendeesQuery = query(attendeesCol, orderBy('createdAt', 'asc'));
+  const attendeesQuery = query(attendeesCol, orderBy('createdAt','asc'));
 
-  // --- Config: phân biệt guest vs btc ---
-  const GUEST_TOTAL = 44;      // public nhìn thấy 44 khách
-  const BTC_CAPACITY = 3;      // slot BTC
-  const TOTAL = GUEST_TOTAL + BTC_CAPACITY; // 47 tổng slot
-
-  // local keys
+  // Config
+  const GUEST_TOTAL = 44;
+  const BTC_CAPACITY = 3;
+  const TOTAL = GUEST_TOTAL + BTC_CAPACITY; // 47
   const KEY = 'participants_v1';
   const IDX = 'lastEntryIndex';
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
@@ -157,13 +154,13 @@
   const btn = document.getElementById('checkBtn');
   const nameInput = document.getElementById('nameInput');
 
-  // util
-  function loadAll(){ return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  // util localStorage
+  function loadAll(){ try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ return []; } }
   function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
   function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
 
-  // make docId safe
+  // build id
   function makeDocIdFrom(rec){
     const cleanName = rec.name
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -173,7 +170,7 @@
     return `${cleanName}_team${rec.team}_no${rec.number}`;
   }
 
-  // update counts from localStorage (guests only)
+  // update counts from local
   function updateCountsFromLocal() {
     const all = loadAll() || [];
     const guestCount = all.filter(p => {
@@ -186,14 +183,17 @@
   updateCountsFromLocal();
   window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCountsFromLocal(); });
 
-  // Realtime listener: sync UI + localStorage on this machine
+  // realtime listener to sync UI and localStorage safely
   onSnapshot(attendeesQuery, (snap) => {
     const remote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // guest count for UI
-    const guestCount = remote.filter(p => String(p.role||'GUEST').toUpperCase() !== 'BTC').length;
+    // guest count shown to users
+    const guestCount = remote.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
     joinedEl.textContent = guestCount;
     totalEl.textContent = GUEST_TOTAL;
-    // sync localStorage with server state (fields only)
+    // disable button if full
+    btn.disabled = (guestCount >= GUEST_TOTAL);
+
+    // sync localStorage but avoid overwriting local when remote is temporarily empty
     try {
       const dump = remote.map(p => ({
         name: p.name || '',
@@ -204,124 +204,124 @@
         slogan: p.slogan || '',
         createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
       }));
-      // if remote is empty but local has items, keep local (avoid overwriting by transient empty snapshot)
-      const local = loadAll();
-      if(!(remote.length === 0 && local.length > 0)){
+      const localRaw = localStorage.getItem(KEY);
+      const localArr = localRaw ? JSON.parse(localRaw) : [];
+      if (!(dump.length === 0 && localArr.length > 0)) {
         localStorage.setItem(KEY, JSON.stringify(dump));
         localStorage.setItem(IDX, String(Math.max(0, dump.length - 1)));
       }
-      btn.disabled = (guestCount >= GUEST_TOTAL);
-    } catch (e) {
-      console.warn('Sync localStorage failed', e);
-    }
+    } catch(e){ console.warn(e); }
   }, (err) => {
     console.error('Realtime listener error:', err);
   });
 
-  // helper compute available
+  // helper compute available from remote (not used in transaction path but kept)
   function computeAvailableFromServer(serverDocs){
     const usedNumbers = new Set(serverDocs.map(s => Number(s.number)).filter(n => !isNaN(n)));
     const availNumbers = [];
     for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
-
     const teamLeft = {};
     TEAMS.forEach(t => {
       const usedByGuests = serverDocs.filter(p => (String(p.role||'').toUpperCase() !== 'BTC') && Number(p.team) === t.id).length;
       teamLeft[t.id] = Math.max(0, t.capacity - usedByGuests);
     });
-
     return { availNumbers, teamLeft };
   }
 
-  // submit handler
+  // ---------- TRANSACTION-BASED SUBMIT ----------
   btn.addEventListener('click', async ()=>{
     const name = nameInput.value.trim();
     if(!name){ alert('Vui lòng nhập tên.'); return; }
 
-    // take server snapshot once
-    let serverDocs = [];
+    btn.disabled = true;
     try {
-      const snap = await getDocs(attendeesQuery);
-      serverDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch (err) {
-      console.error('Lỗi khi lấy dữ liệu server:', err);
-      alert('Không lấy được dữ liệu từ server. Thử lại sau.');
-      return;
-    }
+      const newRec = await runTransaction(db, async (tx) => {
+        // read snapshot atomically
+        const snap = await tx.get(attendeesQuery);
+        const serverDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // duplicate name?
-    if(serverDocs.some(p => normalizeName(p.name) === normalizeName(name))){
-      alert('Tên này đã tồn tại.'); return;
-    }
-
-    // guest fullness check
-    const guestNow = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
-    if(guestNow >= GUEST_TOTAL){ alert('Đã đầy cho khách.'); return; }
-
-    const { availNumbers, teamLeft } = computeAvailableFromServer(serverDocs);
-    if(availNumbers.length === 0){ alert('Không còn số trống.'); return; }
-    const chosenNumber = availNumbers[Math.floor(Math.random()*availNumbers.length)];
-
-    const pool = [];
-    Object.keys(teamLeft).forEach(k => { for(let i=0;i<teamLeft[k];i++) pool.push(Number(k)); });
-    if(pool.length === 0){ alert('Tất cả team đều đầy.'); return; }
-    const chosenTeam = pool[Math.floor(Math.random()*pool.length)];
-
-    const rec = {
-      name,
-      team: chosenTeam,
-      number: chosenNumber,
-      time: Date.now(),
-      teamLabel: 'TEAM ' + chosenTeam,
-      role: 'GUEST'
-    };
-
-    // save local for immediate UX
-    try {
-      const all = loadAll();
-      all.push(rec);
-      saveAll(all);
-      setLastIndex(all.length - 1);
-      updateCountsFromLocal(); // update same-tab UI immediately
-    } catch(e) { console.warn('Không lưu localStorage:', e); }
-
-    // write to firestore
-    try {
-      let docId = makeDocIdFrom(rec);
-      // try setDoc, if collision change id suffix
-      let attempts = 0;
-      while(attempts < 4){
-        try {
-          await setDoc(doc(attendeesCol, docId), {
-            name: rec.name,
-            team: rec.team,
-            teamLabel: rec.teamLabel,
-            number: rec.number,
-            role: rec.role,
-            createdAt: serverTimestamp()
-          });
-          break;
-        } catch(err){
-          attempts++;
-          docId = `${docId}_${Math.random().toString(36).slice(2,8)}`;
+        // duplicate name on server?
+        if(serverDocs.some(p => normalizeName(p.name) === normalizeName(name))){
+          throw new Error('DUP_NAME');
         }
-      }
-    } catch (err) {
-      console.error('Lỗi ghi Firestore:', err);
-    }
 
-    window.location.href = 'result.html';
+        // guest count (exclude BTC)
+        const guestNow = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
+        if(guestNow >= GUEST_TOTAL){
+          throw new Error('GUEST_FULL');
+        }
+
+        // used numbers (both BTC & guests)
+        const usedNumbers = new Set(serverDocs.map(s => Number(s.number)).filter(n => !isNaN(n)));
+        const availNumbers = [];
+        for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
+        if(availNumbers.length === 0) throw new Error('NO_NUMBER');
+
+        // compute teamLeft counting only guests (BTC ignored)
+        const teamLeft = {};
+        TEAMS.forEach(t => {
+          const usedByGuests = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC' && Number(p.team) === t.id).length;
+          teamLeft[t.id] = Math.max(0, t.capacity - usedByGuests);
+        });
+        const pool = [];
+        Object.keys(teamLeft).forEach(k => { for(let i=0;i<teamLeft[k];i++) pool.push(Number(k)); });
+        if(pool.length === 0) throw new Error('TEAMS_FULL');
+
+        // choose number & team
+        const chosenNumber = availNumbers[Math.floor(Math.random()*availNumbers.length)];
+        const chosenTeam = pool[Math.floor(Math.random()*pool.length)];
+
+        const rec = {
+          name,
+          team: chosenTeam,
+          number: chosenNumber,
+          time: Date.now(),
+          teamLabel: 'TEAM ' + chosenTeam,
+          role: 'GUEST',
+          createdAt: serverTimestamp()
+        };
+
+        // pick unique doc id
+        let docId = makeDocIdFrom(rec);
+        let docRef = doc(attendeesCol, docId);
+        let suffix = 0;
+        while (serverDocs.some(d => d.id === docId)) {
+          suffix++;
+          docId = `${docId}_${suffix}`;
+          docRef = doc(attendeesCol, docId);
+        }
+
+        tx.set(docRef, rec);
+        return rec;
+      }, { maxAttempts: 5 });
+
+      // success: save locally and navigate
+      try {
+        const a = loadAll();
+        a.push(newRec);
+        saveAll(a);
+        setLastIndex(a.length - 1);
+        updateCountsFromLocal();
+      } catch(e){ console.warn('local save failed', e); }
+
+      window.location.href = 'result.html';
+    } catch (err) {
+      console.error('Transaction failed:', err);
+      if(err.message === 'DUP_NAME') alert('Tên này đã tồn tại. Vui lòng dùng tên khác.');
+      else if(err.message === 'GUEST_FULL') alert('Đã đầy cho khách (44).');
+      else if(err.message === 'NO_NUMBER') alert('Không còn số trống.');
+      else if(err.message === 'TEAMS_FULL') alert('Tất cả team đã đầy cho khách.');
+      else alert('Ghi không thành công. Thử lại (mạng/phiên).');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') btn.click(); });
 
-  // simple admin require function to avoid missing onclick reference errors
+  // admin require guard
   function requireAdmin(e){
-    // allow direct navigation; if you want a prompt, uncomment below:
-    // e.preventDefault();
-    // const pw = prompt('Nhập mật khẩu Admin để vào trang quản lý:');
-    // if(pw === '2025') { sessionStorage.setItem('admin_auth','1'); window.location.href='admin.html'; } else { alert('Sai mật khẩu'); }
-    return true;
+    return true; // allow link; admin page itself prompts for password
   }
   window.requireAdmin = requireAdmin;
 
