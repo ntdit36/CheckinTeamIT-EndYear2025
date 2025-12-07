@@ -112,7 +112,6 @@
   </div>
 
 <script type="module">
-  // Firebase + logic (transaction-safe)
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js';
   import {
     getFirestore,
@@ -121,7 +120,8 @@
     query,
     orderBy,
     onSnapshot,
-    runTransaction,
+    getDocs,
+    setDoc,
     serverTimestamp
   } from 'https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js';
 
@@ -140,178 +140,150 @@
   const attendeesCol = collection(db, 'attendees');
   const attendeesQuery = query(attendeesCol, orderBy('createdAt','asc'));
 
-  // Config
   const GUEST_TOTAL = 44;
   const BTC_CAPACITY = 3;
-  const TOTAL = GUEST_TOTAL + BTC_CAPACITY; // 47
+  const TOTAL = GUEST_TOTAL + BTC_CAPACITY;
   const KEY = 'participants_v1';
   const IDX = 'lastEntryIndex';
   const TEAMS = Array.from({length:10}, (_,i)=>({id:i+1,capacity:i<6?4:5}));
 
-  // UI refs
   const joinedEl = document.getElementById('joined');
   const totalEl = document.getElementById('total');
   const btn = document.getElementById('checkBtn');
   const nameInput = document.getElementById('nameInput');
 
-  // util localStorage
   function loadAll(){ try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ return []; } }
   function saveAll(arr){ localStorage.setItem(KEY, JSON.stringify(arr)); }
   function setLastIndex(i){ localStorage.setItem(IDX, String(i)); }
-  function normalizeName(n){ return String(n||'').trim().toLowerCase(); }
+  function normalizeName(n){ return String(n||'').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-  // build id
-  function makeDocIdFrom(rec){
-    const cleanName = rec.name
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9]+/g, "_")
-      .toLowerCase()
-      .slice(0,20);
-    return `${cleanName}_team${rec.team}_no${rec.number}`;
-  }
-
-  // update counts from local
-  function updateCountsFromLocal() {
-    const all = loadAll() || [];
-    const guestCount = all.filter(p => {
-      const r = String(p.role || 'GUEST').toUpperCase();
-      return r !== 'BTC';
-    }).length;
-    joinedEl.textContent = guestCount;
-    totalEl.textContent = GUEST_TOTAL;
-  }
-  updateCountsFromLocal();
-  window.addEventListener('storage', (e)=>{ if(e.key === KEY) updateCountsFromLocal(); });
-
-  // realtime listener to sync UI and localStorage safely
+  // realtime UI sync (keep)
   onSnapshot(attendeesQuery, (snap) => {
-    const remote = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // guest count shown to users
+    const remote = snap.docs.map(d => ({ id:d.id, ...d.data() }));
     const guestCount = remote.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
     joinedEl.textContent = guestCount;
     totalEl.textContent = GUEST_TOTAL;
-    // disable button if full
     btn.disabled = (guestCount >= GUEST_TOTAL);
-
-    // sync localStorage but avoid overwriting local when remote is temporarily empty
     try {
-      const dump = remote.map(p => ({
-        name: p.name || '',
-        number: p.number || null,
-        role: p.role || '',
-        team: p.team || null,
-        teamLabel: p.teamLabel || '',
-        slogan: p.slogan || '',
-        createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null
-      }));
+      // sync local but don't overwrite when remote empty and local has data
+      const dump = remote.map(p => ({ name:p.name||'', number:p.number||null, role:p.role||'', team:p.team||null, teamLabel:p.teamLabel||'', createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null }));
       const localRaw = localStorage.getItem(KEY);
       const localArr = localRaw ? JSON.parse(localRaw) : [];
       if (!(dump.length === 0 && localArr.length > 0)) {
         localStorage.setItem(KEY, JSON.stringify(dump));
         localStorage.setItem(IDX, String(Math.max(0, dump.length - 1)));
       }
-    } catch(e){ console.warn(e); }
-  }, (err) => {
-    console.error('Realtime listener error:', err);
+    } catch(e){ console.warn('sync local failed', e); }
+  }, err => {
+    console.error('realtime onSnapshot error', err);
   });
 
-  // helper compute available from remote (not used in transaction path but kept)
-  function computeAvailableFromServer(serverDocs){
-    const usedNumbers = new Set(serverDocs.map(s => Number(s.number)).filter(n => !isNaN(n)));
-    const availNumbers = [];
-    for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
-    const teamLeft = {};
-    TEAMS.forEach(t => {
-      const usedByGuests = serverDocs.filter(p => (String(p.role||'').toUpperCase() !== 'BTC') && Number(p.team) === t.id).length;
-      teamLeft[t.id] = Math.max(0, t.capacity - usedByGuests);
-    });
-    return { availNumbers, teamLeft };
+  // helper to build safe id
+  function makeDocIdFrom(rec){
+    const cleanName = String(rec.name||'').normalize("NFD").replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').toLowerCase().slice(0,20);
+    return `${cleanName}_team${rec.team}_no${rec.number}`;
   }
 
-  // ---------- TRANSACTION-BASED SUBMIT ----------
-  btn.addEventListener('click', async ()=>{
+  // robust submit (reads server snapshot then setDoc; logs full error)
+  btn.addEventListener('click', async () => {
     const name = nameInput.value.trim();
-    if(!name){ alert('Vui lòng nhập tên.'); return; }
+    if (!name) { alert('Vui lòng nhập tên.'); return; }
 
     btn.disabled = true;
     try {
-      const newRec = await runTransaction(db, async (tx) => {
-        // read snapshot atomically
-        const snap = await tx.get(attendeesQuery);
-        const serverDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // read server snapshot properly
+      const snap = await getDocs(attendeesQuery);
+      const serverDocs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 
-        // duplicate name on server?
-        if(serverDocs.some(p => normalizeName(p.name) === normalizeName(name))){
-          throw new Error('DUP_NAME');
-        }
+      // duplicate name check (server-side)
+      if (serverDocs.some(p => normalizeName(p.name) === normalizeName(name))) {
+        alert('Tên này đã tồn tại trên server.');
+        btn.disabled = false;
+        return;
+      }
 
-        // guest count (exclude BTC)
-        const guestNow = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
-        if(guestNow >= GUEST_TOTAL){
-          throw new Error('GUEST_FULL');
-        }
+      // guest count
+      const guestCount = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
+      if (guestCount >= GUEST_TOTAL) {
+        alert('Đã đầy cho khách (44).');
+        btn.disabled = false;
+        return;
+      }
 
-        // used numbers (both BTC & guests)
-        const usedNumbers = new Set(serverDocs.map(s => Number(s.number)).filter(n => !isNaN(n)));
-        const availNumbers = [];
-        for(let i=1;i<=TOTAL;i++) if(!usedNumbers.has(i)) availNumbers.push(i);
-        if(availNumbers.length === 0) throw new Error('NO_NUMBER');
+      // available numbers
+      const usedNums = new Set(serverDocs.map(p => Number(p.number)).filter(n => !isNaN(n)));
+      const avail = [];
+      for (let i=1;i<=TOTAL;i++) if (!usedNums.has(i)) avail.push(i);
+      if (avail.length === 0) {
+        alert('Không còn số trống.');
+        btn.disabled = false;
+        return;
+      }
+      const chosenNumber = avail[Math.floor(Math.random()*avail.length)];
 
-        // compute teamLeft counting only guests (BTC ignored)
-        const teamLeft = {};
-        TEAMS.forEach(t => {
-          const usedByGuests = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC' && Number(p.team) === t.id).length;
-          teamLeft[t.id] = Math.max(0, t.capacity - usedByGuests);
-        });
-        const pool = [];
-        Object.keys(teamLeft).forEach(k => { for(let i=0;i<teamLeft[k];i++) pool.push(Number(k)); });
-        if(pool.length === 0) throw new Error('TEAMS_FULL');
+      // teamLeft counting GUEST only
+      const teamLeft = {};
+      TEAMS.forEach(t=>{
+        const usedGuests = serverDocs.filter(p => String(p.role||'').toUpperCase() !== 'BTC' && Number(p.team) === t.id).length;
+        teamLeft[t.id] = Math.max(0, t.capacity - usedGuests);
+      });
+      const pool = [];
+      Object.keys(teamLeft).forEach(k=>{ for(let i=0;i<teamLeft[k];i++) pool.push(Number(k)); });
+      if (pool.length === 0) {
+        alert('Tất cả team đã đầy cho khách.');
+        btn.disabled = false;
+        return;
+      }
+      const chosenTeam = pool[Math.floor(Math.random()*pool.length)];
 
-        // choose number & team
-        const chosenNumber = availNumbers[Math.floor(Math.random()*availNumbers.length)];
-        const chosenTeam = pool[Math.floor(Math.random()*pool.length)];
+      const rec = {
+        name,
+        team: chosenTeam,
+        number: chosenNumber,
+        time: Date.now(),
+        teamLabel: 'TEAM ' + chosenTeam,
+        role: 'GUEST',
+        createdAt: serverTimestamp()
+      };
 
-        const rec = {
-          name,
-          team: chosenTeam,
-          number: chosenNumber,
-          time: Date.now(),
-          teamLabel: 'TEAM ' + chosenTeam,
-          role: 'GUEST',
-          createdAt: serverTimestamp()
-        };
+      // prepare doc id safely
+      let id = makeDocIdFrom(rec);
+      let docRef = doc(attendeesCol, id);
+      // if id collides, append suffix
+      let suffix = 0;
+      while (serverDocs.some(d => d.id === id)) {
+        suffix++;
+        id = `${makeDocIdFrom(rec)}_${suffix}`;
+        docRef = doc(attendeesCol, id);
+      }
 
-        // pick unique doc id
-        let docId = makeDocIdFrom(rec);
-        let docRef = doc(attendeesCol, docId);
-        let suffix = 0;
-        while (serverDocs.some(d => d.id === docId)) {
-          suffix++;
-          docId = `${docId}_${suffix}`;
-          docRef = doc(attendeesCol, docId);
-        }
+      // perform setDoc with try/catch and log detailed error
+      try {
+        await setDoc(docRef, rec);
+      } catch (err) {
+        console.error('setDoc failed:', err);
+        // helpful alert with error.code if exists
+        const msg = err && err.code ? `${err.code} — ${err.message || ''}` : (err.message || String(err));
+        alert('Ghi dữ liệu thất bại: ' + msg);
+        btn.disabled = false;
+        return;
+      }
 
-        tx.set(docRef, rec);
-        return rec;
-      }, { maxAttempts: 5 });
-
-      // success: save locally and navigate
+      // success: persist local and redirect
       try {
         const a = loadAll();
-        a.push(newRec);
+        a.push(rec);
         saveAll(a);
         setLastIndex(a.length - 1);
-        updateCountsFromLocal();
       } catch(e){ console.warn('local save failed', e); }
 
       window.location.href = 'result.html';
+
     } catch (err) {
-      console.error('Transaction failed:', err);
-      if(err.message === 'DUP_NAME') alert('Tên này đã tồn tại. Vui lòng dùng tên khác.');
-      else if(err.message === 'GUEST_FULL') alert('Đã đầy cho khách (44).');
-      else if(err.message === 'NO_NUMBER') alert('Không còn số trống.');
-      else if(err.message === 'TEAMS_FULL') alert('Tất cả team đã đầy cho khách.');
-      else alert('Ghi không thành công. Thử lại (mạng/phiên).');
+      // big catch: log full error for debugging
+      console.error('Submit flow error:', err);
+      const msg = err && err.code ? `${err.code} — ${err.message || ''}` : (err.message || String(err));
+      alert('Lỗi dữ liệu. Mở Console để xem chi tiết. Mã lỗi: ' + msg);
     } finally {
       btn.disabled = false;
     }
@@ -319,12 +291,9 @@
 
   nameInput.addEventListener('keypress', e=>{ if(e.key==='Enter') btn.click(); });
 
-  // admin require guard
-  function requireAdmin(e){
-    return true; // allow link; admin page itself prompts for password
-  }
+  // admin guard
+  function requireAdmin(e){ if(e && e.preventDefault) e.preventDefault(); if(sessionStorage.getItem('admin_auth')==='1'){ window.location.href='admin.html'; } else { const pw = prompt('Nhập mật khẩu Admin:'); if(pw===null) return; if(pw==='2025'){ sessionStorage.setItem('admin_auth','1'); window.location.href='admin.html'; } else alert('Mật khẩu không đúng.'); } }
   window.requireAdmin = requireAdmin;
-
 </script>
 
 <footer class="site-footer">
