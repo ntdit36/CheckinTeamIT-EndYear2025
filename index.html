@@ -41,6 +41,33 @@
       padding: 16px 0;
       pointer-events: none;
     }
+    .it-icon{
+  width:86px;
+  height:86px;
+  border-radius:999px;
+  margin:0 auto 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  /* remove outer visuals */
+  background: transparent;     /* no gradient */
+  border: none;                /* no border */
+  box-shadow: none;            /* no shadow */
+
+  overflow: hidden;            /* giữ logo không tràn vùng tròn */
+  padding: 6px;                /* optional: tạo khoảng thở quanh logo */
+}
+
+/* logo vừa vặn trong vòng tròn */
+.it-icon .logo-img{
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* giữ tỉ lệ, không crop méo */
+  display:block;
+}
+
+
   </style>
 </head>
 <body>
@@ -52,7 +79,10 @@
   <div class="wrap">
     <div class="titleTop">
       <div class="it-icon" aria-hidden="true">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <img src="./logoIT.png"
+       alt="Logo IT"
+       class="logo-img" loading="lazy">
+        
           <rect x="2.5" y="4" width="19" height="12" rx="1.5" stroke="#e6eef8" stroke-width="1.2" fill="rgba(255,255,255,0.02)"/>
           <path d="M3 16.6h18" stroke="#cfe0ff" stroke-width="1.1" stroke-linecap="round"/>
           <path d="M8 8.8h1.8" stroke="#cfe0ff" stroke-width="1.3" stroke-linecap="round"/>
