@@ -158,25 +158,64 @@
   function normalizeName(n){ return String(n||'').trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
   // realtime UI sync (keep)
-  onSnapshot(attendeesQuery, (snap) => {
-    const remote = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-    const guestCount = remote.filter(p => String(p.role||'').toUpperCase() !== 'BTC').length;
-    joinedEl.textContent = guestCount;
-    totalEl.textContent = GUEST_TOTAL;
-    btn.disabled = (guestCount >= GUEST_TOTAL);
-    try {
-      // sync local but don't overwrite when remote empty and local has data
-      const dump = remote.map(p => ({ name:p.name||'', number:p.number||null, role:p.role||'', team:p.team||null, teamLabel:p.teamLabel||'', createdAt: p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString()) : null }));
-      const localRaw = localStorage.getItem(KEY);
-      const localArr = localRaw ? JSON.parse(localRaw) : [];
-      if (!(dump.length === 0 && localArr.length > 0)) {
-        localStorage.setItem(KEY, JSON.stringify(dump));
-        localStorage.setItem(IDX, String(Math.max(0, dump.length - 1)));
-      }
-    } catch(e){ console.warn('sync local failed', e); }
-  }, err => {
-    console.error('realtime onSnapshot error', err);
-  });
+  // --- realtime listener: cập nhật số khách và khoá input/nút khi full ---
+onSnapshot(attendeesQuery, (snap) => {
+  const all = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  // lọc khách (loại BTC)
+  const guestNow = all.filter(
+    p => String(p.role || '').toUpperCase() !== 'BTC'
+  ).length;
+
+  // cập nhật hiển thị
+  if (joinedEl) joinedEl.textContent = String(guestNow);
+  if (totalEl) totalEl.textContent = String(GUEST_TOTAL);
+
+  // ==== GIỐNG HỆT BTC ====
+
+  if (nameInput && checkBtn) {
+    if (guestNow >= GUEST_TOTAL) {
+
+      // Nút: đổi text + disabled (KHÔNG ẨN)
+      checkBtn.style.display = 'block';
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'HẾT SLOT';
+
+      // Input: ẩn hoàn toàn
+      nameInput.style.display = 'none';
+
+    } else {
+
+      // reset về trạng thái bình thường
+      checkBtn.style.display = 'block';
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Xác nhận';
+
+      nameInput.style.display = 'block';
+    }
+  }
+
+  // Đồng bộ localStorage (giống BTC)
+  try {
+    const dump = all.map(p => ({
+      name: p.name || '',
+      number: p.number || null,
+      role: p.role || '',
+      team: p.team || null,
+      teamLabel: p.teamLabel || '',
+      createdAt: p.createdAt
+        ? (p.createdAt.toDate ? p.createdAt.toDate().toISOString() : new Date(p.createdAt).toISOString())
+        : null
+    }));
+
+    localStorage.setItem(KEY, JSON.stringify(dump));
+    localStorage.setItem('lastEntryIndex', String(Math.max(0, dump.length - 1)));
+
+  } catch (e) {
+    console.warn('sync local failed', e);
+  }
+});
+
 
   // helper to build safe id
   function makeDocIdFrom(rec){
